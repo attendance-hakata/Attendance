@@ -13,7 +13,9 @@
   .en{font-family:'Archivo',sans-serif}
 
   /* header */
-  .hdr{display:flex;align-items:center;justify-content:space-between;padding:20px 20px 0}
+  .hdr{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 0;gap:12px}
+  .logo-img{height:26px;width:auto;display:block;flex-shrink:0;mix-blend-mode:lighten}
+  .elogo-img{height:34px;width:auto;display:block;margin-bottom:18px;mix-blend-mode:lighten}
   .logo{display:flex;flex-direction:column;gap:2px}
   .logo b{font-family:'Archivo',sans-serif;font-weight:800;font-size:22px;letter-spacing:-.02em}
   .logo i{display:block;width:108px;height:4px;background:var(--lime);border-radius:2px}
@@ -146,6 +148,7 @@
   .left{flex:1;font-size:12px;font-weight:700}
   .left.warn{color:var(--warn)} .left.ok{color:var(--lime)}
   .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
   .box{border:1px solid #2E2E2E;border-radius:8px;padding:10px 12px}
   .box.to{border-color:var(--lime)}
   .box .k{font-size:11px;color:var(--muted)}

@@ -1,65 +1,72 @@
 /* =====================================================================
-   サンプルデータ（実装時は API の結果に置き換える）
+   データ（getBootstrap の実データを入れる。サンプルは持たない）
    ===================================================================== */
-var TODAY = '2026-11-03';               // 実装時はアプリを開いた日
-var MIN_YM = [2026, 10];                // 今月（11月）。これより前には戻れない
-var DATE = '2026-11-08';                // 今週の練習日（割振の対象）
-var DUTY = 'B';                         // 今週の担当（担当表から）
-var UNIT = 5;                           // 5人で1チーム換算
-
-var GYMS = [
-  { id: 'g1', name: '第一小学校', short: '第一小' },
-  { id: 'g2', name: '第二小学校', short: '第二小' },
-  { id: 'g3', name: '第三小学校', short: '第三小' },
-  { id: 'g4', name: '第四小学校', short: '第四小' }
-];
-var TEAMS = [ // n = その週の参加人数（出欠集計から）, members = 所属メンバー（サンプル）
-  { id: 'A', name: 'Active',    n: 8, home: 'g1', members: ['佐藤 健', '鈴木 大', '高橋 彩', '田中 翔', '伊藤 みな'] },
-  { id: 'B', name: 'bent',      n: 3, home: 'g2', members: ['渡辺 亮', '山本 さき', '中村 和'] },
-  { id: 'C', name: 'CompacT',   n: 7, home: 'g3', members: ['小林 悠', '加藤 玲', '吉田 遼', '山田 花'] },
-  { id: 'D', name: 'DAIDAI',    n: 9, members: ['佐々木 蓮', '松本 結', '井上 樹', '木村 陸'] },
-  { id: 'E', name: 'HOZUKI',    n: 2, members: ['林 奏', '清水 凪'] },
-  { id: 'F', name: "LIB'ER'TY", n: 6, home: 'g4', members: ['斎藤 歩', '山口 空', '阿部 蒼'] },
-  { id: 'G', name: 'MUGEN',     n: 4, members: ['森 隼', '池田 凛', '橋本 新'] },
-  { id: 'H', name: 'RUSH',      n: 5, members: ['石川 湊', '前田 杏', '藤田 快'] }
-];
-var TYPES = {
+var UNIT = 5;                     // 5人で1チーム換算
+var TODAY = '', DATE = '';        // アプリを開いた日 / 今週の練習日
+var MIN_YM = [2026, 0];           // 今月（これより前には戻れない）
+var DUTY_NAME = '';               // 今週の担当（担当表の人）
+var GYMS = [];                    // [{id,name,short}]
+var TEAMS = [];                   // [{id,name,home,n,members:[{id,name}]}]
+var ATT = {};                     // 出欠 {date:{memberId:'yes'|'no'|'maybe'}}
+var DATES = [];                   // 出欠の対象日（直近の日曜）
+var TYPES = {                     // 表示ラベル・色（UI定数）
   assign: { label: '割振',       color: '#C6F14A' },
   closed: { label: '使用不可',   color: '#FF9A3C' },
   rest:   { label: 'チーム休み', color: '#6CB4FF' },
   other:  { label: 'その他',     color: '#D4D4D4' }
 };
-var REASONS = {
+var REASONS = {                   // UI定数
   closed: ['学校行事', '地域行事', '選挙・公共行事', 'その他'],
   rest:   ['チームの都合', '大会・遠征', 'その他']
 };
-var PAST_ASSIGN = { // 確定済みの過去分
-  '2026-11-01': [
-    { gym: '第一小学校', teams: 'Active、DAIDAI' },
-    { gym: '第二小学校', teams: 'bent、HOZUKI、MUGEN' },
-    { gym: '第三小学校', teams: "CompacT、LIB'ER'TY" }
-  ]
-};
+
+function gymShort_(name){ return String(name || '').replace(/小学校$/, '小'); }
+
+// getBootstrap の結果（boot）からアプリ用データを作る
+function buildData(boot){
+  TODAY = boot.today;
+  DATE = boot.next;
+  DATES = boot.dates || [DATE];
+  var td = parse(TODAY); MIN_YM = [td.getFullYear(), td.getMonth()];
+  DUTY_NAME = boot.dutyName || '';
+  ATT = boot.attendance || {};
+  var al = boot.allocation || {};
+  // 体育館（使える体育館＋使用不可の体育館）
+  var gyms = (al.gyms || []).slice();
+  var closedList = al.closed ? (Array.isArray(al.closed) ? al.closed : [al.closed]) : [];
+  closedList.forEach(function(c){ if (c && c.id && !gyms.some(function(g){ return g.id === c.id; })) gyms.push({ id: c.id, name: c.name }); });
+  GYMS = gyms.map(function(g){ return { id: g.id, name: g.name, short: gymShort_(g.name) }; });
+  // チーム（＋メンバー、＋今週の参加人数＝出欠が参加の人数）
+  var attNext = ATT[DATE] || {};
+  TEAMS = (boot.teams || []).map(function(t){
+    var mem = (boot.members || []).filter(function(m){ return m.teamId === t.id; }).map(function(m){ return { id: m.id, name: m.name }; });
+    var n = mem.filter(function(m){ return attNext[m.id] === 'yes'; }).length;
+    return { id: t.id, name: t.name, home: t.homeGymId || '', n: n, members: mem };
+  });
+  // 今週の割振・使用不可・練習休みを state へ
+  state.asg.assign = al.alloc || {};
+  state.asg.decided = !!(al.state && al.state !== 'open');
+  state.asg.gym = GYMS.length ? GYMS[0].id : '';
+  state.events = [];
+  closedList.forEach(function(c, i){ if (c && c.id) state.events.push({ id: 'c' + i, type: 'closed', date: DATE, gym: c.id, reason: '', memo: c.reason || '', by: '' }); });
+  var dayOffs = boot.dayOffs || {};
+  Object.keys(dayOffs).forEach(function(d, i){ state.events.push({ id: 'o' + i, type: 'other', date: d, reason: '', memo: '練習休み' + (dayOffs[d] ? '：' + dayOffs[d] : ''), by: '' }); });
+  state.cal.ym = MIN_YM.slice();
+  state.cal.sel = DATE;
+}
 
 var state = {
   tab: 'home',
   me: null,                                   // 選択中のチームID（自分のチーム）
   member: null,                               // 選択中のメンバー名（誰で操作するか）
+  memberId: null,                             // 選択中のメンバーID
   admin: false,                               // 管理画面のロック解除
   pick: { team: null },                       // 入口：チーム選択の途中状態
   gate: { code: '', err: '' },                // 管理パスワードの入力
-  events: [
-    { id: 'e1', type: 'closed', date: '2026-11-08', gym: 'g4', reason: '学校行事', memo: '運動会', by: 'F' },
-    { id: 'e2', type: 'rest',   date: '2026-11-08', team: 'H', reason: '大会・遠征', memo: '', by: 'H' },
-    { id: 'e3', type: 'closed', date: '2026-11-15', gym: 'g2', reason: '地域行事', memo: '秋祭り', by: 'B' },
-    { id: 'e4', type: 'rest',   date: '2026-11-15', team: 'E', reason: 'チームの都合', memo: '', by: 'E' },
-    { id: 'e5', type: 'other',  date: '2026-11-18', reason: '', memo: '代表者ミーティング（オンライン）', by: 'D' },
-    { id: 'e6', type: 'closed', date: '2026-11-29', gym: 'g1', reason: '選挙・公共行事', memo: '投票所のため', by: 'A' }
-  ],
-  nextId: 7,
-  cal: { ym: [2026, 10], sel: DATE, filters: { assign: true, closed: true, rest: true, other: true }, sheet: null, form: null, confirmDel: false, toast: '' },
-  asg: { screen: 'pick', gym: 'g1', pending: null, decided: false, posted: false, copied: false,
-         assign: { A: 'g1', F: 'g1', B: 'g2', E: 'g2', D: 'g2', C: 'g3', G: 'g3', H: null } }
+  events: [],                                 // 予定（使用不可・練習休み等。buildData で実データを入れる）
+  nextId: 1,
+  cal: { ym: [2026, 0], sel: '', filters: { assign: true, closed: true, rest: true, other: true }, sheet: null, form: null, confirmDel: false, toast: '' },
+  asg: { screen: 'pick', gym: '', pending: null, decided: false, posted: false, copied: false, assign: {} }
 };
 
 /* =====================================================================
@@ -96,7 +103,6 @@ function unassigned(){
 }
 /* カレンダーに出す割振（過去の確定分＋今週の草案／確定） */
 function assignFor(date){
-  if (PAST_ASSIGN[date]) return { status: '確定済み', rows: PAST_ASSIGN[date] };
   if (date !== DATE) return null;
   var rows = openGyms().map(function(g){
     var ts = TEAMS.filter(function(t){ return state.asg.assign[t.id] === g.id && countOf(t) > 0; });
@@ -116,7 +122,7 @@ function header(){
   var who = state.me
     ? '<button class="who" data-act="switchIdent" aria-label="チーム・担当を切り替える"><span class="dot"></span>' + esc(tname(state.me)) + ' / ' + esc(state.member) + '</button>'
     : '';
-  return '<div class="hdr"><div class="logo"><b>Attendance</b><i></i></div>' + who + '</div>';
+  return '<div class="hdr"><img class="logo-img" src="assets/logo.png" alt="Attendance.">' + who + '</div>';
 }
 function tabbar(){
   var ic = {
@@ -149,12 +155,17 @@ function viewHome(){
       + '<div class="kv"><span>割振先の体育館</span><span class="v">' + esc(where) + '</span></div>'
       + '<div class="kv"><span>今週の参加人数</span><span class="v">' + countOf(t) + ' 人</span></div>'
       + '</div>';
-    h += '<div class="label">自チームの出欠</div>'
-      + '<div class="grid2">'
-      + '<div class="box"><div class="label">出席</div><div class="big en">' + countOf(t) + '</div></div>'
-      + '<div class="box"><div class="label">未回答</div><div class="big en">0</div></div>'
+    var am = ATT[DATE] || {}, mem = t.members || [];
+    var yes = mem.filter(function(m){ return am[m.id] === 'yes'; }).length;
+    var no = mem.filter(function(m){ return am[m.id] === 'no'; }).length;
+    var un = mem.length - mem.filter(function(m){ return am[m.id]; }).length;
+    h += '<div class="label">自チームの出欠（' + mem.length + '名）</div>'
+      + '<div class="grid3">'
+      + '<div class="box"><div class="label">参加</div><div class="big en">' + yes + '</div></div>'
+      + '<div class="box"><div class="label">不参加</div><div class="big en">' + no + '</div></div>'
+      + '<div class="box"><div class="label">未回答</div><div class="big en">' + un + '</div></div>'
       + '</div>'
-      + '<button class="link" data-act="tab" data-v="att">出欠を入力する →</button>';
+      + '<button class="link" data-act="tab" data-v="att">出欠を見る →</button>';
   }
   var a = assignFor(DATE);
   if (a) {
@@ -168,9 +179,16 @@ function viewHome(){
   return h + '</div>';
 }
 function viewAtt(){
-  return '<div class="pad"><div class="hero"><div class="label">出欠</div><div class="big">今週の出欠入力</div></div>'
-    + '<div class="notice">出欠の入力画面は次の工程で用意します。<br>ここに、今週（' + md(DATE)
-    + '）の各メンバーの出席・欠席・未回答を入力する画面が入ります。</div></div>';
+  var html = '<div class="pad"><div class="hero"><div class="label">出欠</div><div class="big">あなたの出欠</div></div>';
+  html += '<div class="card">';
+  (DATES.length ? DATES : [DATE]).forEach(function(d){
+    var st = (ATT[d] || {})[state.memberId];
+    var lbl = st === 'yes' ? '参加' : st === 'no' ? '不参加' : st === 'maybe' ? '未定' : '未回答';
+    var cls = st === 'yes' ? 'lime' : st === 'no' ? 'warn' : st === 'maybe' ? 'blue' : '';
+    html += '<div class="kv"><span>' + md(d) + '（' + WD[parse(d).getDay()] + '）</span><span class="v"><span class="st ' + cls + '" style="font-size:14px">' + lbl + '</span></span></div>';
+  });
+  html += '</div><div class="hint">出欠を変更する機能は、この後の工程で追加します。</div></div>';
+  return html;
 }
 function viewAdmin(){
   function mi(title, sub, attr, cv){
@@ -230,7 +248,7 @@ function viewCal(){
     var ds = describe(e), col = TYPES[e.type].color;
     list += '<section class="ev"><div class="body"><span class="tag" style="border-color:' + col + ';color:' + col + '">' + TYPES[e.type].label + '</span>'
       + '<span class="ttl">' + esc(ds.title) + '</span>' + (ds.sub ? '<span class="sb">' + esc(ds.sub) + '</span>' : '')
-      + '<span class="by">登録：' + esc(tname(e.by)) + ' 代表</span></div>'
+      + '<span class="by">登録：' + (e.by && tname(e.by) ? esc(tname(e.by)) + ' 代表' : '管理者') + '</span></div>'
       + '<button class="edit" data-act="calEdit" data-id="' + e.id + '" aria-label="' + esc(ds.title) + 'を編集">編集</button></section>';
   });
   if (!list) list = '<div class="empty">この日の予定はありません</div>';
@@ -361,7 +379,7 @@ function viewAsgPick(){
 
   var un = unassigned();
   var head = '<div class="pad">'
-    + '<div><h1>11/8(日)の割当</h1><div class="label" style="margin-top:6px">今週の担当　' + esc(tname(DUTY)) + (s.decided ? '　・　確定済み' : '　・　草案') + '</div></div>';
+    + '<div><h1>' + md(DATE) + '(' + WD[parse(DATE).getDay()] + ')の割当</h1><div class="label" style="margin-top:6px">今週の担当　' + esc(DUTY_NAME) + (s.decided ? '　・　確定済み' : '　・　草案') + '</div></div>';
   head += '<div><div class="label" style="margin-bottom:8px">① 今週使える体育館を選ぶ</div><div class="gyms">' + gymsHtml + '</div></div>'
     + '<div class="cur"><div><div class="nm">' + esc(cur.name) + '</div><div class="s">' + (ht ? 'ホーム：' + esc(ht.name) : 'ホームのチームなし') + '</div></div>'
     + '<div style="text-align:right"><span class="big">' + curTotal + '</span><span style="font-size:12px">人</span><div class="s">' + Math.floor(curTotal / UNIT) + 'チーム分</div></div></div>'
@@ -442,24 +460,24 @@ function viewAsgLine(){
 }
 
 /* =====================================================================
-   ログイン（代表者パスコード）
+   入口・管理パスワード
    ===================================================================== */
 /* 入口：チームを選ぶ → 誰で操作するか（メンバー）を選ぶ。認証はしない */
 function viewPickTeam(){
   var cards = TEAMS.map(function(t){
     return '<button class="pk" data-act="pickTeam" data-v="' + t.id + '"><span class="bd">' + t.id + '</span><span class="pkname">' + esc(t.name) + '</span><span class="cv">›</span></button>';
   }).join('');
-  return '<div class="entry"><div class="elogo"><b class="en">Attendance</b><i></i></div>'
+  return '<div class="entry"><img class="elogo-img" src="assets/logo.png" alt="Attendance.">'
     + '<div class="etitle">チームを選択</div>'
     + '<div class="esub">あなたのチームを選んでください</div>'
     + '<div class="menu">' + cards + '</div></div>';
 }
 function viewPickMember(){
   var t = team(state.pick.team), ms = t.members || [];
-  var cards = ms.map(function(nm){
-    return '<button class="pk" data-act="pickMember" data-v="' + esc(nm) + '"><span class="pkname">' + esc(nm) + '</span><span class="cv">›</span></button>';
-  }).join('');
-  return '<div class="entry"><div class="elogo"><b class="en">Attendance</b><i></i></div>'
+  var cards = ms.length ? ms.map(function(m){
+    return '<button class="pk" data-act="pickMember" data-v="' + esc(m.id) + '"><span class="pkname">' + esc(m.name) + '</span><span class="cv">›</span></button>';
+  }).join('') : '<div class="empty">このチームにはメンバーが登録されていません。</div>';
+  return '<div class="entry"><img class="elogo-img" src="assets/logo.png" alt="Attendance.">'
     + '<div class="etitle">' + esc(t.name) + '</div>'
     + '<div class="esub">あなたの名前を選んでください</div>'
     + '<div class="menu">' + cards + '</div>'
@@ -496,16 +514,14 @@ function render(){
   if (state.tab === 'cal' && state.cal.sheet) overlays += viewSheet();
   if (state.tab === 'cal' && state.cal.confirmDel) overlays += viewDelete();
   if (state.tab === 'asg' && state.admin && state.asg.pending) overlays += viewMove();
-  document.getElementById('app').innerHTML = header() + body
-    + '<div class="mock-note">モックアップ：体育館名・メンバー・人数・予定はサンプルです</div>'
-    + tabbar() + overlays;
+  document.getElementById('app').innerHTML = header() + body + tabbar() + overlays;
 }
 
 /* =====================================================================
    操作
    ===================================================================== */
-function saveIdent(){ try { if (state.me) localStorage.setItem('att_ident', JSON.stringify({ team: state.me, member: state.member })); else localStorage.removeItem('att_ident'); } catch (e) {} }
-function loadIdent(){ try { var r = JSON.parse(localStorage.getItem('att_ident') || 'null'); if (r && team(r.team)) { state.me = r.team; state.member = r.member; } } catch (e) {} }
+function saveIdent(){ try { if (state.me) localStorage.setItem('att_ident', JSON.stringify({ team: state.me, member: state.member, memberId: state.memberId })); else localStorage.removeItem('att_ident'); } catch (e) {} }
+function loadIdent(){ try { var r = JSON.parse(localStorage.getItem('att_ident') || 'null'); if (r && team(r.team)) { var t = team(r.team), m = (t.members || []).filter(function(x){ return x.id === r.memberId; })[0]; if (m) { state.me = r.team; state.memberId = r.memberId; state.member = m.name; } } } catch (e) {} }
 function newForm(){
   var c = state.cal, ds = isSun(c.sel) && c.sel >= TODAY ? [c.sel] : [];
   return { id: null, type: 'closed', dates: ds, date: c.sel >= TODAY ? c.sel : TODAY, gym: homeOf(state.me), team: state.me, reason: REASONS.closed[0], memo: '', by: state.me };
@@ -516,10 +532,11 @@ function editForm(e){
 
 var ACTIONS = {
   tab: function(el){ set({ tab: el.dataset.v }); window.scrollTo(0, 0); },
-  switchIdent: function(){ set({ me: null, member: null, admin: false, pick: { team: null }, gate: { code: '', err: '' }, tab: 'home' }); saveIdent(); },
+  switchIdent: function(){ set({ me: null, member: null, memberId: null, admin: false, pick: { team: null }, gate: { code: '', err: '' }, tab: 'home' }); saveIdent(); },
   pickTeam: function(el){ state.pick.team = el.dataset.v; render(); },
   pickBack: function(){ state.pick.team = null; render(); },
-  pickMember: function(el){ set({ me: state.pick.team, member: el.dataset.v, tab: 'home' }); saveIdent(); },
+  pickMember: function(el){ var t = team(state.pick.team), m = t && (t.members || []).filter(function(x){ return x.id === el.dataset.v; })[0]; set({ me: state.pick.team, member: m ? m.name : '', memberId: el.dataset.v, tab: 'home' }); saveIdent(); },
+  reload: function(){ bootLoad(); },
   gateSubmit: function(){
     if (!/^\d{8}$/.test(state.gate.code || '')) { state.gate.err = 'パスワードは8桁の数字です'; return render(); }
     set({ admin: true, gate: { code: '', err: '' } });
@@ -618,5 +635,19 @@ document.addEventListener('keydown', function(ev){
   if (state.cal.sheet) return setCal({ sheet: null, form: null });
 });
 
-loadIdent();
-render();
+function renderLoading(){
+  document.getElementById('app').innerHTML = '<div class="entry"><img class="elogo-img" src="assets/logo.png" alt="Attendance."><div class="esub">読み込み中…</div></div>';
+}
+function renderError(e){
+  document.getElementById('app').innerHTML = '<div class="entry"><img class="elogo-img" src="assets/logo.png" alt="Attendance.">'
+    + '<div class="etitle">読み込みに失敗しました</div>'
+    + '<div class="esub">通信エラー（' + esc(e && e.message ? e.message : '') + '）。電波のよい場所でお試しください。</div>'
+    + '<button class="btn primary" data-act="reload">再読み込み</button></div>';
+}
+// getBootstrap の実データを取得してからアプリを描く
+function bootLoad(){
+  renderLoading();
+  api('getBootstrap').then(function(data){ buildData(data.boot); loadIdent(); render(); }).catch(function(e){ renderError(e); });
+}
+
+bootLoad();
