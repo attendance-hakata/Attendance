@@ -1,0 +1,11 @@
+# 公開するのは docs/ と README だけ。
+# まずすべてを無視し、公開してよいものだけを明示的に許可する。
+# これにより src/（GASソース）、notes/、tests/、.clasp.json、.deployment-id、
+# 認証情報、画像の元データなどが誤って公開されるのを防ぐ。
+
+/*
+
+# 公開を許可するもの
+!/.gitignore
+!/README.md
+!/docs/

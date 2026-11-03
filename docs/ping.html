@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attendance 通信確認</title>
+<style>
+  html, body { margin: 0; background: #0D0D0D; color: #F5F5F5; font-family: sans-serif; }
+  main { max-width: 430px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 22px; margin: 0 0 16px; }
+  li { margin: 10px 0; line-height: 1.5; }
+  .ok { color: #C6F14A; font-weight: 700; }
+  .ng { color: #FF9A3C; font-weight: 700; }
+  button { width: 100%; min-height: 48px; margin-top: 16px; border: 0; border-radius: 10px; background: #C6F14A; color: #0D0D0D; font-size: 15px; font-weight: 700; }
+</style>
+</head>
+<body>
+<main>
+  <h1>通信確認</h1>
+  <ul id="out"></ul>
+  <button id="again" type="button">もう一度試す</button>
+</main>
+<script src="config.js"></script>
+<script>
+  // 通信の成否と件数だけを表示する。メンバー名などのデータは画面に出さない
+  var out = document.getElementById('out');
+  function line(cls, text) {
+    var li = document.createElement('li');
+    li.className = cls;
+    li.textContent = text;
+    out.appendChild(li);
+  }
+  function post(action) {
+    var started = Date.now();
+    return fetch(window.API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: action }),
+      redirect: 'follow'
+    }).then(function (res) { return res.json(); }).then(function (json) {
+      if (!json.ok) throw new Error(json.error.code);
+      return { data: json.data, ms: Date.now() - started };
+    });
+  }
+  function run() {
+    out.textContent = '';
+    window.pingResult = null;
+    post('ping').then(function (r) {
+      line('ok', 'ping 成功(' + r.ms + 'ms)');
+      return post('getBootstrap');
+    }).then(function (r) {
+      line('ok', 'getBootstrap 成功(' + r.ms + 'ms、' + r.data.boot.teams.length + 'チーム)');
+      window.pingResult = 'OK';
+    }).catch(function (e) {
+      line('ng', '失敗: ' + e.message);
+      window.pingResult = 'NG: ' + e.message;
+    });
+  }
+  document.getElementById('again').addEventListener('click', run);
+  run();
+</script>
+</body>
+</html>
