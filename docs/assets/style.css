@@ -178,3 +178,15 @@
   .mi b{font-size:15px;font-weight:700;display:block}
   .mi .sub{font-size:12px;color:var(--muted);margin-top:3px;display:block}
   .mi .cv{color:var(--dim);font-size:16px;flex-shrink:0}
+
+  /* 入口（チーム・メンバー選択） */
+  .entry{padding:44px 20px calc(40px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;min-height:100dvh}
+  .elogo{display:flex;flex-direction:column;gap:3px;margin-bottom:18px}
+  .elogo b{font-size:30px;font-weight:800;line-height:1}
+  .elogo i{display:block;width:118px;height:4px;border-radius:2px;background:var(--lime)}
+  .etitle{font-size:22px;font-weight:800}
+  .esub{font-size:13px;color:var(--muted);margin-bottom:8px}
+  .pk{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;padding:16px;background:#111;color:var(--ink);cursor:pointer}
+  .pk .bd{width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-family:'Archivo',sans-serif;font-size:13px;flex-shrink:0;border:1.5px solid var(--ink)}
+  .pkname{flex:1;font-size:16px;font-weight:700}
+  .pk .cv{color:var(--dim);font-size:18px;flex-shrink:0}

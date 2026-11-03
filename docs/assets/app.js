@@ -13,15 +13,15 @@ var GYMS = [
   { id: 'g3', name: '第三小学校', short: '第三小' },
   { id: 'g4', name: '第四小学校', short: '第四小' }
 ];
-var TEAMS = [ // n = その週の参加人数（出欠集計から）
-  { id: 'A', name: 'Active',    n: 8, home: 'g1' },
-  { id: 'B', name: 'bent',      n: 3, home: 'g2' },
-  { id: 'C', name: 'CompacT',   n: 7, home: 'g3' },
-  { id: 'D', name: 'DAIDAI',    n: 9 },
-  { id: 'E', name: 'HOZUKI',    n: 2 },
-  { id: 'F', name: "LIB'ER'TY", n: 6, home: 'g4' },
-  { id: 'G', name: 'MUGEN',     n: 4 },
-  { id: 'H', name: 'RUSH',      n: 5 }
+var TEAMS = [ // n = その週の参加人数（出欠集計から）, members = 所属メンバー（サンプル）
+  { id: 'A', name: 'Active',    n: 8, home: 'g1', members: ['佐藤 健', '鈴木 大', '高橋 彩', '田中 翔', '伊藤 みな'] },
+  { id: 'B', name: 'bent',      n: 3, home: 'g2', members: ['渡辺 亮', '山本 さき', '中村 和'] },
+  { id: 'C', name: 'CompacT',   n: 7, home: 'g3', members: ['小林 悠', '加藤 玲', '吉田 遼', '山田 花'] },
+  { id: 'D', name: 'DAIDAI',    n: 9, members: ['佐々木 蓮', '松本 結', '井上 樹', '木村 陸'] },
+  { id: 'E', name: 'HOZUKI',    n: 2, members: ['林 奏', '清水 凪'] },
+  { id: 'F', name: "LIB'ER'TY", n: 6, home: 'g4', members: ['斎藤 歩', '山口 空', '阿部 蒼'] },
+  { id: 'G', name: 'MUGEN',     n: 4, members: ['森 隼', '池田 凛', '橋本 新'] },
+  { id: 'H', name: 'RUSH',      n: 5, members: ['石川 湊', '前田 杏', '藤田 快'] }
 ];
 var TYPES = {
   assign: { label: '割振',       color: '#C6F14A' },
@@ -43,8 +43,11 @@ var PAST_ASSIGN = { // 確定済みの過去分
 
 var state = {
   tab: 'home',
-  me: null,                                   // ログイン中のチームID
-  login: null,                                // { team, code, err, then }
+  me: null,                                   // 選択中のチームID（自分のチーム）
+  member: null,                               // 選択中のメンバー名（誰で操作するか）
+  admin: false,                               // 管理画面のロック解除
+  pick: { team: null },                       // 入口：チーム選択の途中状態
+  gate: { code: '', err: '' },                // 管理パスワードの入力
   events: [
     { id: 'e1', type: 'closed', date: '2026-11-08', gym: 'g4', reason: '学校行事', memo: '運動会', by: 'F' },
     { id: 'e2', type: 'rest',   date: '2026-11-08', team: 'H', reason: '大会・遠征', memo: '', by: 'H' },
@@ -111,8 +114,8 @@ function setAsg(p){ Object.assign(state.asg, p); render(); }
    ===================================================================== */
 function header(){
   var who = state.me
-    ? '<button class="who" data-act="openLogin" aria-label="ログイン中のチームを切り替える"><span class="dot"></span>' + esc(tname(state.me)) + ' 代表</button>'
-    : '<button class="who out" data-act="openLogin"><span class="dot"></span>代表者ログイン</button>';
+    ? '<button class="who" data-act="switchIdent" aria-label="チーム・担当を切り替える"><span class="dot"></span>' + esc(tname(state.me)) + ' / ' + esc(state.member) + '</button>'
+    : '';
   return '<div class="hdr"><div class="logo"><b>Attendance</b><i></i></div>' + who + '</div>';
 }
 function tabbar(){
@@ -141,6 +144,7 @@ function viewHome(){
     var t = team(state.me), g = state.asg.assign[state.me], rest = restOn(DATE, state.me);
     var where = rest ? '休み' : (g && !closedOn(DATE, g) ? gname(g) : '未定');
     h += '<div class="card">'
+      + '<div class="kv"><span>あなた</span><span class="v">' + esc(state.member) + '</span></div>'
       + '<div class="kv"><span>自チーム</span><span class="v">' + esc(t.name) + '</span></div>'
       + '<div class="kv"><span>割振先の体育館</span><span class="v">' + esc(where) + '</span></div>'
       + '<div class="kv"><span>今週の参加人数</span><span class="v">' + countOf(t) + ' 人</span></div>'
@@ -151,9 +155,6 @@ function viewHome(){
       + '<div class="box"><div class="label">未回答</div><div class="big en">0</div></div>'
       + '</div>'
       + '<button class="link" data-act="tab" data-v="att">出欠を入力する →</button>';
-  } else {
-    h += '<div class="notice">代表者パスコードでログインすると、自チームの今週の体育館と出欠が表示されます。'
-      + '<button class="btn ghost" data-act="openLogin">代表者ログイン</button></div>';
   }
   var a = assignFor(DATE);
   if (a) {
@@ -332,7 +333,7 @@ function viewDelete(){
    割振
    ===================================================================== */
 function viewAsgPick(){
-  var s = state.asg, canEdit = state.me === DUTY;
+  var s = state.asg, canEdit = state.admin;
   var cur = gym(s.gym), curTotal = total(s.gym), ht = homeTeamOf(s.gym);
 
   var gymsHtml = GYMS.map(function(g){
@@ -360,11 +361,7 @@ function viewAsgPick(){
 
   var un = unassigned();
   var head = '<div class="pad">'
-    + '<div><h1>11/8(日)の割当</h1><div class="label" style="margin-top:6px">今週の担当　' + esc(tname(DUTY)) + ' 代表' + (s.decided ? '　・　確定済み' : '　・　草案') + '</div></div>';
-  if (!canEdit) {
-    head += '<div class="notice"><span>割振ができるのは、今週の担当（' + esc(tname(DUTY)) + ' 代表）だけです。' + (state.me ? '' : '担当の方はログインしてください。') + '</span>'
-      + '<button class="btn ghost" style="min-height:44px" data-act="openLogin">' + (state.me ? 'ログイン中のチームを切り替える' : '代表者ログイン') + '</button></div>';
-  }
+    + '<div><h1>11/8(日)の割当</h1><div class="label" style="margin-top:6px">今週の担当　' + esc(tname(DUTY)) + (s.decided ? '　・　確定済み' : '　・　草案') + '</div></div>';
   head += '<div><div class="label" style="margin-bottom:8px">① 今週使える体育館を選ぶ</div><div class="gyms">' + gymsHtml + '</div></div>'
     + '<div class="cur"><div><div class="nm">' + esc(cur.name) + '</div><div class="s">' + (ht ? 'ホーム：' + esc(ht.name) : 'ホームのチームなし') + '</div></div>'
     + '<div style="text-align:right"><span class="big">' + curTotal + '</span><span style="font-size:12px">人</span><div class="s">' + Math.floor(curTotal / UNIT) + 'チーム分</div></div></div>'
@@ -447,45 +444,68 @@ function viewAsgLine(){
 /* =====================================================================
    ログイン（代表者パスコード）
    ===================================================================== */
-function viewLogin(){
-  var l = state.login;
-  return '<div class="overlay center"><div class="dialog" role="dialog" aria-modal="true" aria-label="代表者ログイン">'
-    + '<div class="q">代表者ログイン</div>'
-    + '<div class="label">チームのパスコードを入力すると、そのチームの代表として登録・割振ができます。</div>'
-    + '<label class="fld">チーム<select data-lfield="team">' + TEAMS.map(function(t){ return '<option value="' + t.id + '"' + (t.id === l.team ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('') + '</select></label>'
-    + '<label class="fld">パスコード<input type="password" inputmode="numeric" autocomplete="current-password" data-lfield="code" value="' + esc(l.code) + '" placeholder="4桁の数字"></label>'
-    + (l.err ? '<div class="err" role="alert">' + esc(l.err) + '</div>' : '')
-    + '<div class="hint">モックアップでは4桁の数字なら何でもログインできます</div>'
-    + '<div class="row2">' + (state.me ? '<button class="btn quiet" data-act="logout">ログアウト</button>' : '<button class="btn ghost" data-act="closeLogin">キャンセル</button>')
-    + '<button class="btn primary" data-act="doLogin">ログイン</button></div>'
-    + (state.me ? '<button class="link" style="align-self:center" data-act="closeLogin">閉じる</button>' : '')
-    + '</div></div>';
+/* 入口：チームを選ぶ → 誰で操作するか（メンバー）を選ぶ。認証はしない */
+function viewPickTeam(){
+  var cards = TEAMS.map(function(t){
+    return '<button class="pk" data-act="pickTeam" data-v="' + t.id + '"><span class="bd">' + t.id + '</span><span class="pkname">' + esc(t.name) + '</span><span class="cv">›</span></button>';
+  }).join('');
+  return '<div class="entry"><div class="elogo"><b class="en">Attendance</b><i></i></div>'
+    + '<div class="etitle">チームを選択</div>'
+    + '<div class="esub">あなたのチームを選んでください</div>'
+    + '<div class="menu">' + cards + '</div></div>';
+}
+function viewPickMember(){
+  var t = team(state.pick.team), ms = t.members || [];
+  var cards = ms.map(function(nm){
+    return '<button class="pk" data-act="pickMember" data-v="' + esc(nm) + '"><span class="pkname">' + esc(nm) + '</span><span class="cv">›</span></button>';
+  }).join('');
+  return '<div class="entry"><div class="elogo"><b class="en">Attendance</b><i></i></div>'
+    + '<div class="etitle">' + esc(t.name) + '</div>'
+    + '<div class="esub">あなたの名前を選んでください</div>'
+    + '<div class="menu">' + cards + '</div>'
+    + '<button class="link" style="align-self:center;margin-top:10px" data-act="pickBack">← チーム選択に戻る</button></div>';
+}
+/* 管理画面のパスワード。これを知っている人だけが管理画面に入れる */
+function viewAdminGate(){
+  var g = state.gate;
+  return '<div class="pad"><div class="hero"><div class="label">管理画面</div><div class="big">管理パスワード</div></div>'
+    + '<div class="notice">管理画面（割振・代表者設定・チーム管理など）に入るにはパスワードが必要です。</div>'
+    + '<label class="fld">パスワード<input type="password" inputmode="numeric" autocomplete="off" data-gfield="code" value="' + esc(g.code) + '" placeholder="8桁の数字"></label>'
+    + (g.err ? '<div class="err" role="alert">' + esc(g.err) + '</div>' : '')
+    + '<div class="hint">デモ：8桁の数字で開きます（本番はサーバーで照合します）</div>'
+    + '<button class="btn primary" data-act="gateSubmit">管理画面に入る</button></div>';
 }
 
 /* =====================================================================
    描画
    ===================================================================== */
 function render(){
+  // まだ誰で操作するか決めていなければ、入口（チーム→メンバー選択）を出す
+  if (!state.me) {
+    document.getElementById('app').innerHTML = state.pick.team ? viewPickMember() : viewPickTeam();
+    return;
+  }
+  var asgBody = state.asg.screen === 'confirm' ? viewAsgConfirm() : state.asg.screen === 'line' ? viewAsgLine() : viewAsgPick();
   var body;
   if (state.tab === 'home') body = viewHome();
   else if (state.tab === 'att') body = viewAtt();
   else if (state.tab === 'cal') body = viewCal();
-  else if (state.tab === 'admin') body = viewAdmin();
-  else body = state.asg.screen === 'confirm' ? viewAsgConfirm() : state.asg.screen === 'line' ? viewAsgLine() : viewAsgPick();
+  else if (state.tab === 'admin') body = state.admin ? viewAdmin() : viewAdminGate();
+  else body = state.admin ? asgBody : viewAdminGate();
   var overlays = '';
   if (state.tab === 'cal' && state.cal.sheet) overlays += viewSheet();
   if (state.tab === 'cal' && state.cal.confirmDel) overlays += viewDelete();
-  if (state.tab === 'asg' && state.asg.pending) overlays += viewMove();
-  if (state.login) overlays += viewLogin();
+  if (state.tab === 'asg' && state.admin && state.asg.pending) overlays += viewMove();
   document.getElementById('app').innerHTML = header() + body
-    + '<div class="mock-note">モックアップ：体育館名・ホーム・人数・予定はサンプルです</div>'
+    + '<div class="mock-note">モックアップ：体育館名・メンバー・人数・予定はサンプルです</div>'
     + tabbar() + overlays;
 }
 
 /* =====================================================================
    操作
    ===================================================================== */
-function needLogin(then){ set({ login: { team: state.me || 'B', code: '', err: '', then: then } }); }
+function saveIdent(){ try { if (state.me) localStorage.setItem('att_ident', JSON.stringify({ team: state.me, member: state.member })); else localStorage.removeItem('att_ident'); } catch (e) {} }
+function loadIdent(){ try { var r = JSON.parse(localStorage.getItem('att_ident') || 'null'); if (r && team(r.team)) { state.me = r.team; state.member = r.member; } } catch (e) {} }
 function newForm(){
   var c = state.cal, ds = isSun(c.sel) && c.sel >= TODAY ? [c.sel] : [];
   return { id: null, type: 'closed', dates: ds, date: c.sel >= TODAY ? c.sel : TODAY, gym: homeOf(state.me), team: state.me, reason: REASONS.closed[0], memo: '', by: state.me };
@@ -496,17 +516,13 @@ function editForm(e){
 
 var ACTIONS = {
   tab: function(el){ set({ tab: el.dataset.v }); window.scrollTo(0, 0); },
-  openLogin: function(){ needLogin(null); },
-  closeLogin: function(){ set({ login: null }); },
-  logout: function(){ set({ me: null, login: null }); },
-  doLogin: function(){
-    var l = state.login;
-    if (!/^\d{4}$/.test(l.code)) { l.err = 'パスコードが違います'; return render(); }
-    var then = l.then;
-    state.me = l.team; state.login = null;
-    if (then === 'new') { state.cal.form = newForm(); state.cal.sheet = 'new'; }
-    if (then && then.indexOf('edit:') === 0) { var e = state.events.find(function(x){ return x.id === then.slice(5); }); if (e) { state.cal.form = editForm(e); state.cal.sheet = 'edit'; } }
-    render();
+  switchIdent: function(){ set({ me: null, member: null, admin: false, pick: { team: null }, gate: { code: '', err: '' }, tab: 'home' }); saveIdent(); },
+  pickTeam: function(el){ state.pick.team = el.dataset.v; render(); },
+  pickBack: function(){ state.pick.team = null; render(); },
+  pickMember: function(el){ set({ me: state.pick.team, member: el.dataset.v, tab: 'home' }); saveIdent(); },
+  gateSubmit: function(){
+    if (!/^\d{8}$/.test(state.gate.code || '')) { state.gate.err = 'パスワードは8桁の数字です'; return render(); }
+    set({ admin: true, gate: { code: '', err: '' } });
   },
 
   calPrev: function(){ var c = state.cal, d = new Date(c.ym[0], c.ym[1] - 1, 1); if (d.getFullYear() < MIN_YM[0] || (d.getFullYear() === MIN_YM[0] && d.getMonth() < MIN_YM[1])) return; setCal({ ym: [d.getFullYear(), d.getMonth()], toast: '' }); },
@@ -514,8 +530,8 @@ var ACTIONS = {
   calThis: function(){ setCal({ ym: MIN_YM.slice(), sel: TODAY, toast: '' }); },
   calPick: function(el){ setCal({ sel: el.dataset.date, toast: '' }); },
   calFilter: function(el){ var f = Object.assign({}, state.cal.filters); f[el.dataset.v] = !f[el.dataset.v]; setCal({ filters: f }); },
-  calNew: function(){ if (!state.me) return needLogin('new'); setCal({ sheet: 'new', form: newForm(), toast: '' }); },
-  calEdit: function(el){ if (!state.me) return needLogin('edit:' + el.dataset.id); var e = state.events.find(function(x){ return x.id === el.dataset.id; }); setCal({ sheet: 'edit', form: editForm(e), toast: '' }); },
+  calNew: function(){ setCal({ sheet: 'new', form: newForm(), toast: '' }); },
+  calEdit: function(el){ var e = state.events.find(function(x){ return x.id === el.dataset.id; }); setCal({ sheet: 'edit', form: editForm(e), toast: '' }); },
   closeSheet: function(el, ev){ if (el.dataset.self && ev.target !== el) return; setCal({ sheet: null, form: null, confirmDel: false }); },
   fType: function(el){
     var f = state.cal.form, k = el.dataset.v;
@@ -552,7 +568,7 @@ var ACTIONS = {
 
   asgGym: function(el){ setAsg({ gym: el.dataset.v }); },
   asgTeam: function(el){
-    if (state.me !== DUTY) return;
+    if (!state.admin) return;
     var id = el.dataset.v, s = state.asg, a = s.assign[id], assign = Object.assign({}, s.assign);
     if (a === s.gym) { assign[id] = null; return setAsg({ assign: assign, decided: false }); }
     if (!a || closedOn(DATE, a)) { assign[id] = s.gym; return setAsg({ assign: assign, decided: false }); }
@@ -585,7 +601,7 @@ document.addEventListener('change', function(ev){
     if (el.dataset.field === 'date' && f.type !== 'other') f.dates = isSun(el.value) ? [el.value] : f.dates;
     if (el.dataset.field !== 'memo') render();
   }
-  if (el.dataset.lfield && state.login) { state.login[el.dataset.lfield] = el.value; }
+  if (el.dataset.gfield) { state.gate[el.dataset.gfield] = el.value; }
 });
 document.addEventListener('input', function(ev){
   var el = ev.target;
@@ -593,14 +609,14 @@ document.addEventListener('input', function(ev){
     state.cal.form.memo = el.value;
     var b = document.getElementById('saveBtn'); if (b) b.disabled = cannotSave(state.cal.form);
   }
-  if (el.dataset.lfield === 'code' && state.login) { state.login.code = el.value; }
+  if (el.dataset.gfield === 'code') { state.gate.code = el.value; }
 });
 document.addEventListener('keydown', function(ev){
   if (ev.key !== 'Escape') return;
-  if (state.login) return set({ login: null });
   if (state.asg.pending) return setAsg({ pending: null });
   if (state.cal.confirmDel) return setCal({ confirmDel: false });
   if (state.cal.sheet) return setCal({ sheet: null, form: null });
 });
 
+loadIdent();
 render();
