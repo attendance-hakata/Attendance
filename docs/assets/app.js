@@ -42,7 +42,7 @@ var PAST_ASSIGN = { // 確定済みの過去分
 };
 
 var state = {
-  tab: 'cal',
+  tab: 'home',
   me: null,                                   // ログイン中のチームID
   login: null,                                // { team, code, err, then }
   events: [
@@ -116,12 +116,71 @@ function header(){
   return '<div class="hdr"><div class="logo"><b>Attendance</b><i></i></div>' + who + '</div>';
 }
 function tabbar(){
-  var cal = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>';
-  var asg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="4" width="7" height="7" rx="1.5"/><rect x="13.5" y="4" width="7" height="7" rx="1.5"/><rect x="3.5" y="14" width="7" height="6" rx="1.5"/><path d="M14 17h6M17 14v6"/></svg>';
+  var ic = {
+    home:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>',
+    att:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h7"/><path d="m15.5 18 2.2 2.2L22 15.6"/></svg>',
+    cal:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
+    admin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5 5l2.1 2.1M16.9 16.9 19 19M19 5l-2.1 2.1M7.1 16.9 5 19"/></svg>'
+  };
+  function t(v, label){
+    var on = v === 'admin' ? (state.tab === 'admin' || state.tab === 'asg') : state.tab === v;
+    return '<button class="tab' + (on ? ' on' : '') + '" data-act="tab" data-v="' + v + '" aria-current="' + on + '">' + ic[v] + label + '</button>';
+  }
   return '<nav class="tabbar" aria-label="画面の切り替え">'
-    + '<button class="tab' + (state.tab === 'cal' ? ' on' : '') + '" data-act="tab" data-v="cal" aria-current="' + (state.tab === 'cal') + '">' + cal + 'カレンダー</button>'
-    + '<button class="tab' + (state.tab === 'asg' ? ' on' : '') + '" data-act="tab" data-v="asg" aria-current="' + (state.tab === 'asg') + '">' + asg + '割振</button>'
-    + '</nav>';
+    + t('home', 'ホーム') + t('att', '出欠') + t('cal', 'カレンダー') + t('admin', '管理') + '</nav>';
+}
+
+/* =====================================================================
+   ホーム・出欠・管理（枠。中身はモックアップ／サンプル。実装時に API へ）
+   ===================================================================== */
+function viewHome(){
+  var h = '<div class="pad">';
+  h += '<div class="hero"><div class="label">今週の練習日</div><div class="big en">' + md(DATE)
+    + ' <span style="font-size:14px;font-family:\'Noto Sans JP\',sans-serif">（' + WD[parse(DATE).getDay()] + '）</span></div></div>';
+  if (state.me) {
+    var t = team(state.me), g = state.asg.assign[state.me], rest = restOn(DATE, state.me);
+    var where = rest ? '休み' : (g && !closedOn(DATE, g) ? gname(g) : '未定');
+    h += '<div class="card">'
+      + '<div class="kv"><span>自チーム</span><span class="v">' + esc(t.name) + '</span></div>'
+      + '<div class="kv"><span>割振先の体育館</span><span class="v">' + esc(where) + '</span></div>'
+      + '<div class="kv"><span>今週の参加人数</span><span class="v">' + countOf(t) + ' 人</span></div>'
+      + '</div>';
+    h += '<div class="label">自チームの出欠</div>'
+      + '<div class="grid2">'
+      + '<div class="box"><div class="label">出席</div><div class="big en">' + countOf(t) + '</div></div>'
+      + '<div class="box"><div class="label">未回答</div><div class="big en">0</div></div>'
+      + '</div>'
+      + '<button class="link" data-act="tab" data-v="att">出欠を入力する →</button>';
+  } else {
+    h += '<div class="notice">代表者パスコードでログインすると、自チームの今週の体育館と出欠が表示されます。'
+      + '<button class="btn ghost" data-act="openLogin">代表者ログイン</button></div>';
+  }
+  var a = assignFor(DATE);
+  if (a) {
+    h += '<div class="label">今週の割振（' + a.status + '）</div><div class="card">';
+    if (a.rows.length) a.rows.forEach(function(r){
+      h += '<div class="kv"><span>' + esc(r.gym) + '</span><span class="v" style="font-weight:500;color:var(--sub)">' + esc(r.teams) + '</span></div>';
+    });
+    else h += '<div class="st">まだ割振がありません</div>';
+    h += '</div><button class="link" data-act="tab" data-v="cal">カレンダーで見る →</button>';
+  }
+  return h + '</div>';
+}
+function viewAtt(){
+  return '<div class="pad"><div class="hero"><div class="label">出欠</div><div class="big">今週の出欠入力</div></div>'
+    + '<div class="notice">出欠の入力画面は次の工程で用意します。<br>ここに、今週（' + md(DATE)
+    + '）の各メンバーの出席・欠席・未回答を入力する画面が入ります。</div></div>';
+}
+function viewAdmin(){
+  function mi(title, sub, attr, cv){
+    return '<button class="mi" ' + attr + '><span><b>' + title + '</b><span class="sub">' + sub + '</span></span><span class="cv">' + cv + '</span></button>';
+  }
+  return '<div class="pad"><div class="hero"><div class="label">管理画面</div><div class="big">管理メニュー</div></div><div class="menu">'
+    + mi('割振', '今週の体育館割当（幹事）', 'data-act="tab" data-v="asg"', '›')
+    + mi('連絡先', 'チームの連絡先を確認', 'disabled', '準備中')
+    + mi('チーム管理', 'メンバー・連絡先の編集', 'disabled', '準備中')
+    + mi('管理者', 'パスワード・体育館・担当表', 'disabled', '準備中')
+    + '</div></div>';
 }
 
 /* =====================================================================
@@ -408,7 +467,10 @@ function viewLogin(){
    ===================================================================== */
 function render(){
   var body;
-  if (state.tab === 'cal') body = viewCal();
+  if (state.tab === 'home') body = viewHome();
+  else if (state.tab === 'att') body = viewAtt();
+  else if (state.tab === 'cal') body = viewCal();
+  else if (state.tab === 'admin') body = viewAdmin();
   else body = state.asg.screen === 'confirm' ? viewAsgConfirm() : state.asg.screen === 'line' ? viewAsgLine() : viewAsgPick();
   var overlays = '';
   if (state.tab === 'cal' && state.cal.sheet) overlays += viewSheet();
