@@ -430,16 +430,17 @@
     return { title: e.memo || 'その他の予定', sub: '' };
   }
   function calTargetDates(f) { return f.date ? [f.date] : []; }
-  function calCannotSave(f) { return !calTargetDates(f).length || (f.type === 'other' && !String(f.memo).trim()) || (f.type === 'closed' && !f.gym); }
-  function calSheetWarn(f) {
-    if (f.type === 'other') return '';
+  // 使用不可・チーム休みは、次の日曜(割振が作成済み)には登録させない
+  function calBlocked(f) {
+    if (f.type === 'other') return false;
     var a = S.boot.allocation;
-    if (calTargetDates(f).indexOf(S.boot.next) >= 0 && a && !a.dayOff) {
-      return a.state === 'confirmed'
-        ? calMd(S.boot.next) + 'は割振が確定済みのため、ここからは登録できません。変更が必要な場合は割振担当にご連絡ください。'
-        : calMd(S.boot.next) + 'はすでに割振が作成されています。保存するとこの内容が割振に反映されます。既存の予定を確認して上書きするか、編集してください。';
-    }
-    return '';
+    return calTargetDates(f).indexOf(S.boot.next) >= 0 && !!a && !a.dayOff;
+  }
+  function calCannotSave(f) { return !calTargetDates(f).length || calBlocked(f) || (f.type === 'other' && !String(f.memo).trim()) || (f.type === 'closed' && !f.gym); }
+  function calSheetWarn(f) {
+    return calBlocked(f)
+      ? calMd(S.boot.next) + 'はすでに割振が作成されているため、ここからは登録・変更できません。変更が必要な場合は割振担当にご連絡ください。'
+      : '';
   }
   function calNewForm() {
     var sel = S.cal.sel, today = S.boot.today;
