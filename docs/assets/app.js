@@ -442,7 +442,7 @@
     var a = S.boot.allocation;
     if (calTargetDates(f).indexOf(S.boot.next) >= 0 && a && !a.dayOff) {
       return a.state === 'confirmed'
-        ? calMd(S.boot.next) + 'は割振が確定済みのため、登録できません。'
+        ? calMd(S.boot.next) + 'は割振が確定済みのため、ここからは登録できません。変更が必要な場合は割振担当にご連絡ください。'
         : calMd(S.boot.next) + 'はすでに割振が作成されています。保存するとこの内容が割振に反映されます。既存の予定を確認して上書きするか、編集してください。';
     }
     return '';
