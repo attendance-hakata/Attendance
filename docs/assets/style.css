@@ -194,6 +194,7 @@ a{color:inherit}
 
 /* 割り振り(モックアップ準拠の作り直し) */
 .alloc-head .link{font-size:12px}
+.alloc-when{font-size:15px;font-weight:700;color:var(--acc);margin-top:3px}
 .label.gap{margin-top:16px;margin-bottom:8px}
 .gymchips{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
 .gymchip{flex:0 0 auto;min-width:88px;padding:8px 12px;text-align:left;background:none;border:1px solid var(--rule);color:var(--tx)}
@@ -223,7 +224,7 @@ a{color:inherit}
 .teamrow .num{display:flex;align-items:baseline;gap:2px;font-size:11px;color:var(--mute)}
 .teamrow .num b{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--tx)}
 .teamrow .num b.short{color:var(--warn)}
-.allocbar{position:sticky;bottom:0;margin-top:16px;padding:12px 0 8px;background:var(--bg);border-top:1px solid var(--rule);display:flex;gap:10px;align-items:center}
+.allocbar{margin-top:20px;padding:16px 0 8px;border-top:1px solid var(--rule);display:flex;gap:10px;align-items:center}
 .allocbar .primary{min-height:52px;flex:0 0 190px;font-size:15px}
 .allocbar .ghost{min-height:52px;flex:1}
 .allocbar .left{flex:1;font-size:12px;font-weight:700}

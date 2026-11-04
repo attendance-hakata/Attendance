@@ -371,10 +371,14 @@
     return w;
   }
 
+  function allocDateLabel(date) {
+    var d = calParse(date);
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日（' + CAL_WD[d.getDay()] + '）';
+  }
   function allocHead() {
     var A = allocA();
-    return '<div class="alloc-head"><div><div class="label">' + dateLabel(A.date) + '(日) の割当</div>' +
-      '<div class="title-sm">割り振り<span class="acc">.</span></div></div>' + allocStatus() + '</div>';
+    return '<div class="alloc-head"><div><div class="title-sm">割り振り<span class="acc">.</span></div>' +
+      '<div class="alloc-when">' + allocDateLabel(A.date) + 'の分</div></div>' + allocStatus() + '</div>';
   }
   function allocStatus() {
     var A = allocA(), who = auth();
@@ -451,16 +455,17 @@
     }).join('');
     var closed = A.closed.map(function (c) { return '<div class="plain"><span>' + esc(c.name) + '</span><span>' + esc(c.reason) + '</span></div>'; }).join('');
     var rest = A.allTeams.filter(function (t) { return t.rest; }).map(function (t) { return t.name; });
-    return '<div class="alloc-head"><div><div class="title-sm">最終確認<span class="acc">.</span></div></div></div>' +
+    return '<div class="alloc-head"><div><div class="title-sm">最終確認<span class="acc">.</span></div>' +
+      '<div class="alloc-when">' + allocDateLabel(S.boot.next) + 'の割当</div></div></div>' +
       (w.length ? '<div class="warns">' + w.map(function (x) { return '<div class="warn"><b>!</b><span>' + esc(x) + '</span></div>'; }).join('') + '</div>' : '') +
       cards + closed +
       '<div class="plain"><span>休み</span><span>' + esc(rest.length ? rest.join('、') : 'なし') + '</span></div>' +
-      '<div class="allocbar"><button class="ghost" data-a="allocBack">戻って修正</button><button class="primary" style="flex:2" data-a="allocDecide">この内容で決定する</button></div>';
+      '<div class="allocbar"><button class="ghost" data-a="allocBack">修正</button><button class="primary" style="flex:2" data-a="allocDecide">この内容で決定する</button></div>';
   }
 
   function viewAllocLine() {
     return '<div class="alloc-head"><div><div class="title-sm">LINE通知の文面<span class="acc">.</span></div></div></div>' +
-      '<div class="done"><i>✓</i>' + dateLabel(S.boot.next) + '(日) の割当を決定しました</div>' +
+      '<div class="done"><i>✓</i>' + allocDateLabel(S.boot.next) + 'の割当を決定しました</div>' +
       '<div class="label">決定した内容から自動で作成しました。投稿前に確認してください。</div>' +
       '<div class="bubble">' + esc(S.alloc.lineText) + '</div>' +
       (S.alloc.copied ? '<div class="label">文面をコピーしました</div>' : '') +
