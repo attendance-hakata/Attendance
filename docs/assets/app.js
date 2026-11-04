@@ -42,7 +42,9 @@
     // 管理画面のデータ。連絡先やパスを含むので端末には保存しない
     admin: { calendar: null, contacts: null, team: null, teamList: null, teamId: null, power: null },
     // メンバーのカレンダー(月表示)の状態
-    cal: { ym: null, sel: '', filters: { assign: true, closed: true, rest: true, other: true }, sheet: null, form: null, confirmDel: false, deleteId: null }
+    cal: { mode: 'member', ym: null, sel: '', filters: { assign: true, closed: true, rest: true, other: true }, sheet: null, form: null, confirmDel: false, deleteId: null },
+    // 割り振り画面(モックアップ準拠)の状態。map は画面内の割当、決定でまとめて保存
+    alloc: { screen: 'pick', gym: '', map: {}, pending: null, version: 0, lineText: '', copied: false }
   };
 
   // ---- 共通処理 ----
@@ -123,6 +125,15 @@
   function token() {
     var value = auth();
     return value ? value.token : null;
+  }
+
+  // 割当を操作できるのは管理者か「割振担当チーム」のパスのみ
+  function canAllocate() {
+    var w = auth();
+    if (!w) return false;
+    if (w.role === 'power') return true;
+    var t = (S.boot && S.boot.teams || []).filter(function (x) { return x.id === w.teamId; })[0];
+    return !!(t && t.allocDuty);
   }
 
   function dropAuth() {
@@ -338,53 +349,122 @@
     }).join('');
   }
 
-  function viewAlloc(team) {
-    var b = S.boot;
-    var view = b.allocation;
-    var who = auth();
-    var tag = view.state === 'confirmed' ? ['confirmed', '確定済み'] : view.adjusted ? ['adjusting', '調整中'] : ['', '割振（自動）'];
-    var head = '<div class="alloc-head"><div><div class="label">' + dateLabel(view.date) + ' SUN</div>' +
-      '<div class="title-sm">割り振り<span class="acc">.</span></div></div>' + (view.dayOff ? '' : '<span class="tag ' + tag[0] + '">' + tag[1] + '</span>') + '</div>';
-    if (view.dayOff) {
-      return head + '<div class="empty"><b>この週は練習休みです。</b>' + esc(view.dayOffReason) + '</div>';
-    }
-    var deadline = view.state === 'open'
-      ? '<span>回答受付中</span><button class="link" data-a="closeWeek">回答を締め切る</button>'
-      : view.state === 'closed'
-        ? '<span>締切済み</span><button class="link" data-a="reopenWeek">受付を再開</button>'
-        : '<span>締切済み</span>' + (who && who.role === 'power' ? '<button class="link" data-a="unconfirm">確定を解除</button>' : '');
-    var html = head + viewSummary() + '<div class="deadline">' + deadline + '</div>';
-    if (view.warnings.length) {
-      html += '<div class="warns">' + view.warnings.map(function (w) {
-        return '<div class="warn"><b>!</b><span>' + esc(w) + '</span></div>';
-      }).join('') + '</div>';
-    }
-    if (view.noOpenGyms) {
-      return html + '<div class="empty"><b>開ける体育館がありません。</b>カレンダーの使用不可を確認してください。</div>' + closedList(view);
-    }
-    html += '<div class="hint">チームをタップして移動先を選びます。</div>';
-    view.gyms.forEach(function (g) {
-      var comp = g.teams.map(function (t) {
-        return '<span class="' + (t.id === team.id ? 'mine' : '') + '" style="flex:' + Math.max(t.yes, 1) + '"></span>';
-      }).join('');
-      var rows = g.teams.map(function (t) {
-        var ok = t.yes >= 6;
-        return '<button class="team-row" data-a="openMove" data-v="' + esc(t.id) + '"><span class="mark' + (t.id === team.id ? ' mine' : '') + '">' + esc(teamMark(t.name)) + '</span>' +
-          '<span class="team-main"><strong>' + esc(t.name) + '</strong><span class="team-sub' + (ok ? ' ok' : '') + '">' + (ok ? '6人以上' : '合流') + (t.none ? '・未回答' + t.none : '') + '</span></span>' +
-          (t.isHome ? '<span class="home-tag">ホーム</span>' : '') +
-          '<b>' + t.yes + '</b><small>移動 →</small></button>';
-      }).join('');
-      html += '<div class="gym"><div class="gym-head"><strong>' + esc(g.name) + '</strong><b>' + g.total + '</b><small>人</small></div>' +
-        (g.start ? '<div class="label">' + esc(timeText(g)) + '</div>' : '') +
-        '<div class="comp">' + comp + '</div><div>' + rows + '</div></div>';
+  // ===== 割り振り(モックアップ準拠。画面内で割り振ってから「決定」でまとめて保存) =====
+  var ALLOC_UNIT = 6; // 6人以上が目安(バックエンドの警告しきい値に合わせる)
+  function allocA() { return S.boot.allocation; }
+  function allocGymName(id) { var g = calGym(id); return g ? g.name : ''; }
+  function allocGymTotal(gymId) {
+    return allocA().allTeams.reduce(function (s, t) { return s + (S.alloc.map[t.id] === gymId ? t.yes : 0); }, 0);
+  }
+  function allocUnassigned() {
+    return allocA().allTeams.filter(function (t) { return !t.rest && t.yes > 0 && !S.alloc.map[t.id]; });
+  }
+  function allocWarnings() {
+    var A = allocA(), w = [];
+    allocUnassigned().forEach(function (t) { w.push(t.name + '（' + t.yes + '人）がまだ割り振られていません'); });
+    A.gyms.forEach(function (g) {
+      var tot = allocGymTotal(g.id);
+      var home = A.allTeams.filter(function (t) { return t.homeGymId === g.id; })[0];
+      if (tot > 0 && tot < ALLOC_UNIT) w.push(g.name + 'が' + tot + '人です（' + ALLOC_UNIT + '人未満）');
+      if (tot > 0 && home && S.alloc.map[home.id] !== g.id) w.push(g.name + 'にホームの' + home.name + 'がいません');
     });
-    html += closedList(view);
-    var main = view.state === 'confirmed'
-      ? (b.lineEnabled ? '修正してLINEに再投稿' : '修正を確定する')
-      : (b.lineEnabled ? '確定してLINEに投稿' : '確定する');
-    html += '<div class="alloc-actions"><button class="primary" data-a="openConfirm">' + main + '<span>→</span></button>' +
-      (view.state === 'confirmed' ? '' : '<button class="link reset" data-a="resetDraft">自動の割振に戻す</button>') + '</div>';
-    return html;
+    return w;
+  }
+
+  function allocHead() {
+    var A = allocA();
+    return '<div class="alloc-head"><div><div class="label">' + dateLabel(A.date) + '(日) の割当</div>' +
+      '<div class="title-sm">割り振り<span class="acc">.</span></div></div>' + allocStatus() + '</div>';
+  }
+  function allocStatus() {
+    var A = allocA(), who = auth();
+    if (A.state === 'open') return '<button class="link" data-a="allocClose">回答受付中・締切</button>';
+    if (A.state === 'closed') return '<button class="link" data-a="allocReopen">締切済み・受付再開</button>';
+    return '<span class="tag confirmed">確定済み</span>' + (who && who.role === 'power' ? '<button class="link" data-a="allocUnconfirm">解除</button>' : '');
+  }
+
+  function viewAlloc() {
+    if (!S.boot || !allocA()) return adminLoading();
+    var A = allocA();
+    if (A.dayOff) return allocHead() + '<div class="empty"><b>この週は練習休みです。</b>' + esc(A.dayOffReason) + '</div>';
+    if (A.noOpenGyms) return allocHead() + '<div class="empty"><b>開ける体育館がありません。</b>カレンダーの使用不可を確認してください。</div>';
+    if (S.alloc.screen === 'confirm') return viewAllocConfirm();
+    if (S.alloc.screen === 'line') return viewAllocLine();
+    return viewAllocPick();
+  }
+
+  function viewAllocPick() {
+    var A = allocA(), active = S.alloc.gym;
+    var chips = A.gyms.map(function (g) {
+      return '<button class="gymchip' + (g.id === active ? ' on' : '') + '" data-a="allocGym" data-v="' + esc(g.id) + '"><b>' + esc(g.name) + '</b><span>' + allocGymTotal(g.id) + '人</span></button>';
+    }).join('') + A.closed.map(function (c) {
+      return '<button class="gymchip off" disabled><b>' + esc(c.name) + '</b><span>' + esc(c.reason) + '</span></button>';
+    }).join('');
+    var homeTeam = A.allTeams.filter(function (t) { return t.homeGymId === active; })[0];
+    var curTotal = allocGymTotal(active);
+    var cur = '<div class="alloc-cur"><div><div class="nm">' + esc(allocGymName(active)) + '</div><div class="sub">' +
+      (homeTeam ? 'ホーム：' + esc(homeTeam.name) : 'ホームのチームなし') + '</div></div>' +
+      '<div class="tot"><span class="big">' + curTotal + '</span>人<div class="sub">' + Math.floor(curTotal / ALLOC_UNIT) + 'チーム分</div></div></div>';
+    var teams = A.allTeams.map(function (t) {
+      var a = S.alloc.map[t.id], here = a === active, off = t.rest, cls = '', st;
+      if (off) st = '休み';
+      else if (here) { st = 'この体育館に割振中'; cls = 'lime'; }
+      else if (a) st = '割振済み：' + allocGymName(a);
+      else { st = '未割当'; cls = 'warn'; }
+      if (!off && t.yes < ALLOC_UNIT) st += '　' + ALLOC_UNIT + '人未満';
+      return '<button class="teamrow' + (here ? ' here' : '') + '" data-a="allocTap" data-v="' + esc(t.id) + '"' + (off ? ' disabled' : '') + '>' +
+        '<span class="bd">' + esc(teamMark(t.name)) + '</span>' +
+        '<span class="tinfo"><span class="tnm">' + esc(t.name) + (t.homeGymId === active ? '<span class="homeb">HOME</span>' : '') + '</span><span class="st ' + cls + '">' + esc(st) + '</span></span>' +
+        '<span class="num"><b' + (!off && t.yes < ALLOC_UNIT ? ' class="short"' : '') + '>' + t.yes + '</b>人</span></button>';
+    }).join('');
+    var un = allocUnassigned();
+    var auto = A.state === 'confirmed' ? '' : '<button class="link reset" data-a="allocAuto">自動で割り振る</button>';
+    return allocHead() +
+      '<div class="label gap">① 今週使える体育館を選ぶ</div><div class="gymchips">' + chips + '</div>' + cur +
+      '<div class="label gap">② チームをタップして、この体育館に割り振る</div><div class="teamlist">' + teams + '</div>' + auto +
+      '<div class="allocbar"><div class="left ' + (un.length ? 'warn' : 'ok') + '">' + (un.length ? '未割当 ' + un.length + 'チーム' : 'すべて割振済み') + '</div>' +
+      '<button class="primary" data-a="allocToConfirm">最終確認へ →</button></div>';
+  }
+
+  function viewAllocMove() {
+    var A = allocA(), p = A.allTeams.filter(function (t) { return t.id === S.alloc.pending; })[0];
+    if (!p) return '';
+    var from = S.alloc.map[p.id], fromTot = allocGymTotal(from), toTot = allocGymTotal(S.alloc.gym);
+    var homeWarn = p.homeGymId && p.homeGymId === from;
+    return '<div class="scrim" data-a="allocCancelMove"><div class="sheet" data-a="noop">' +
+      '<div class="kicker">割振済みのチームです</div>' +
+      '<h3>' + esc(p.name) + '（' + p.yes + '人）を' + esc(allocGymName(S.alloc.gym)) + 'に移しますか?</h3>' +
+      '<div class="movegrid"><div class="movebox"><div class="k">移動元 ' + esc(allocGymName(from)) + '</div><div class="v">' + fromTot + ' → ' + (fromTot - p.yes) + '人</div></div>' +
+      '<div class="movebox to"><div class="k">移動先 ' + esc(allocGymName(S.alloc.gym)) + '</div><div class="v">' + toTot + ' → ' + (toTot + p.yes) + '人</div></div></div>' +
+      (homeWarn ? '<div class="movenote">' + esc(allocGymName(from)) + 'は' + esc(p.name) + 'のホームです。移すと使えなくなる可能性があります。</div>' : '') +
+      '<div class="conf-btns"><button class="ghost" style="height:52px" data-a="allocCancelMove">キャンセル</button><button class="go" data-a="allocConfirmMove">移す</button></div></div></div>';
+  }
+
+  function viewAllocConfirm() {
+    var A = allocA(), w = allocWarnings();
+    var cards = A.gyms.map(function (g) {
+      var ts = A.allTeams.filter(function (t) { return S.alloc.map[t.id] === g.id; });
+      var tot = allocGymTotal(g.id);
+      return '<section class="acard"><div class="achd"><b>' + esc(g.name) + '</b><span><b class="acc">' + tot + '</b>人 ' + Math.floor(tot / ALLOC_UNIT) + 'チーム分</span></div>' +
+        (ts.length ? ts.map(function (t) { return '<div class="at"><span class="bd sm">' + esc(teamMark(t.name)) + '</span><span class="atn">' + esc(t.name) + '</span><span class="n' + (t.yes < ALLOC_UNIT ? ' short' : '') + '">' + t.yes + '人</span></div>'; }).join('') : '<div class="aempty">割当なし（この体育館は使いません）</div>') +
+        '</section>';
+    }).join('');
+    var closed = A.closed.map(function (c) { return '<div class="plain"><span>' + esc(c.name) + '</span><span>' + esc(c.reason) + '</span></div>'; }).join('');
+    var rest = A.allTeams.filter(function (t) { return t.rest; }).map(function (t) { return t.name; });
+    return '<div class="alloc-head"><div><div class="title-sm">最終確認<span class="acc">.</span></div></div></div>' +
+      (w.length ? '<div class="warns">' + w.map(function (x) { return '<div class="warn"><b>!</b><span>' + esc(x) + '</span></div>'; }).join('') + '</div>' : '') +
+      cards + closed +
+      '<div class="plain"><span>休み</span><span>' + esc(rest.length ? rest.join('、') : 'なし') + '</span></div>' +
+      '<div class="allocbar"><button class="ghost" data-a="allocBack">戻って修正</button><button class="primary" style="flex:2" data-a="allocDecide">この内容で決定する</button></div>';
+  }
+
+  function viewAllocLine() {
+    return '<div class="alloc-head"><div><div class="title-sm">LINE通知の文面<span class="acc">.</span></div></div></div>' +
+      '<div class="done"><i>✓</i>' + dateLabel(S.boot.next) + '(日) の割当を決定しました</div>' +
+      '<div class="label">決定した内容から自動で作成しました。投稿前に確認してください。</div>' +
+      '<div class="bubble">' + esc(S.alloc.lineText) + '</div>' +
+      (S.alloc.copied ? '<div class="label">文面をコピーしました</div>' : '') +
+      '<div class="allocbar"><button class="ghost" data-a="allocBack">割当を修正</button><button class="primary" data-a="allocCopyLine">文面をコピー</button></div>';
   }
 
   // ---- カレンダー ----
@@ -430,11 +510,25 @@
     return { title: e.memo || 'その他の予定', sub: '' };
   }
   function calTargetDates(f) { return f.date ? [f.date] : []; }
-  // 使用不可・チーム休みは、次の日曜(割振が作成済み)には登録させない
+  // 使用不可・チーム休みは、次の日曜(割振が作成済み)には登録させない。
+  // 管理画面カレンダーで割当権限がある場合(管理者・割振担当)は解除する
   function calBlocked(f) {
     if (f.type === 'other') return false;
+    if (S.cal.mode === 'admin' && canAllocate()) return false;
     var a = S.boot.allocation;
     return calTargetDates(f).indexOf(S.boot.next) >= 0 && !!a && !a.dayOff;
+  }
+  // 予定の登録者名: 管理カレンダーはトークンの表示名、メンバーカレンダーは本人名
+  function eventBy() {
+    if (S.cal.mode === 'admin') {
+      var w = auth();
+      if (!w) return '';
+      if (w.role === 'power') return '管理者';
+      var t = teamOf(w.teamId);
+      return t ? t.name : '';
+    }
+    var m = me();
+    return m ? m.name : '';
   }
   function calCannotSave(f) { return !calTargetDates(f).length || calBlocked(f) || (f.type === 'other' && !String(f.memo).trim()) || (f.type === 'closed' && !f.gym); }
   function calSheetWarn(f) {
@@ -509,7 +603,7 @@
 
   // 登録・修正シート(メンバーが登録。登録者＝本人。全員に共有される)
   function viewEventSheet() {
-    var f = S.cal.form, isEdit = !!f.id, mem = me();
+    var f = S.cal.form, isEdit = !!f.id;
     var types = ['closed', 'rest', 'other'].map(function (k) {
       var on = f.type === k, col = CAL_TYPES[k].color;
       return '<button data-a="evType" data-v="' + k + '"' + (on ? ' class="on" style="border-color:' + col + ';color:' + col + '"' : '') + '>' + CAL_TYPES[k].label + '</button>';
@@ -539,7 +633,7 @@
       + '<div class="share-note"><b>！</b><span>この予定は<em>全員のカレンダー</em>に反映されます（自分だけのメモではありません）。</span></div>'
       + '<div class="cfld"><span>種類</span><div class="cseg3">' + types + '</div></div>'
       + dateField + gymField + teamField + reasonField + memoField
-      + '<div class="cfld"><span>登録者</span><div class="evby">' + esc(mem ? mem.name : '') + '</div></div>'
+      + '<div class="cfld"><span>登録者</span><div class="evby">' + esc(eventBy()) + '</div></div>'
       + (w ? '<div class="cwbox">' + esc(w) + '</div>' : '')
       + '<div class="evrow">' + (isEdit ? '<button class="cbtn warn" data-a="askDeleteEvent">削除</button>' : '')
       + '<button class="cbtn go" style="flex:2" data-a="saveEvent"' + (calCannotSave(f) ? ' disabled' : '') + '>' + (isEdit ? '修正を保存' : '登録') + '</button></div>'
@@ -655,6 +749,16 @@
       '<div class="form-row">' + numberInput('p:passNew', '数字4桁', 4) + '<button class="sub-btn" data-a="setTeamPass">設定</button></div>' +
       '<div class="note-line">変更すると、そのチームの端末は再入力が必要です。</div></div>';
 
+    html += '<div class="section"><div class="section-head"><span class="label">割振担当チーム</span></div>' +
+      '<div class="note-line">割当の作成・変更ができるチームです。管理者は常に操作できます。</div>';
+    data.teams.forEach(function (t) {
+      html += '<div class="list-row"><span class="mark' + (t.allocDuty ? ' mine' : '') + '">' + esc(teamMark(t.name)) + '</span>' +
+        '<span class="pass-name">' + esc(t.name) + '</span>' +
+        '<span class="duty-state">' + (t.allocDuty ? '割振担当' : '') + '</span>' +
+        '<button class="link" data-a="toggleAllocDuty" data-v="' + esc(t.id) + '">' + (t.allocDuty ? '外す' : '担当にする') + '</button></div>';
+    });
+    html += '</div>';
+
     html += '<div class="section"><div class="section-head"><span class="label">管理者パス</span></div>' +
       '<div class="form-row">' + numberInput('p:powerNew', '新しい番号(数字8桁)', 8, 'password') + '</div>' +
       '<div class="form-row">' + numberInput('p:powerConfirm', 'もう一度入力', 8, 'password') + '<button class="sub-btn" data-a="setPowerPass">変更</button></div>' +
@@ -666,7 +770,7 @@
   function viewTabs(isAdmin) {
     var who = auth();
     var tabs = isAdmin
-      ? [['alloc', '割り振り'], ['contacts', '連絡先'], ['team', 'チーム管理']]
+      ? (canAllocate() ? [['alloc', '割り振り']] : []).concat([['calendar', 'カレンダー'], ['contacts', '連絡先'], ['team', 'チーム管理']])
       : [['home', 'ホーム'], ['answer', '出欠'], ['calendar', 'カレンダー'], ['admin', '管理画面']];
     if (isAdmin && who && who.role === 'power') tabs.push(['power', '管理者']);
     var cols = ' style="grid-template-columns:repeat(' + tabs.length + ',1fr)"';
@@ -713,29 +817,7 @@
       var target = S.admin.team && S.admin.team.members.filter(function (m) { return m.id === S.removeMemberId; })[0];
       return viewConfirmSheet((target ? target.name : '') + 'さんを削除しますか?', '名簿と集計から外れます。過去の出欠とコメントは残ります。', 'removeMember', '削除する');
     }
-    var view = S.boot.allocation;
-    if (S.dialog === 'move') {
-      var moving = teamOf(S.moveTeam);
-      var yes = 0;
-      view.gyms.forEach(function (g) { g.teams.forEach(function (t) { if (t.id === moving.id) yes = t.yes; }); });
-      var opts = view.gyms.map(function (g) {
-        var cur = view.alloc[moving.id] === g.id;
-        return '<button class="move-opt"' + (cur ? ' disabled' : ' data-a="move" data-v="' + esc(g.id) + '"') + '><span>' + esc(g.name) + '</span><small>' +
-          (cur ? '現在' : g.total + ' → ' + (g.total + yes) + '人') + '</small></button>';
-      }).join('');
-      return '<div class="scrim" data-a="closeDialog"><div class="sheet" data-a="noop"><div class="label">移動先を選択</div><h3>' + esc(moving.name) + '(' + yes + '人)</h3>' + opts +
-        '<button class="ghost cancel" data-a="closeDialog">やめる</button></div></div>';
-    }
-    if (S.dialog === 'confirm') {
-      var rows = view.gyms.map(function (g) {
-        return '<div class="conf-row"><b>' + esc(g.name) + '</b><span>' + esc(g.teams.map(function (t) { return teamMark(t.name); }).join(' / ')) + '</span><strong>' + g.total + '</strong></div>';
-      }).join('');
-      var line = S.boot.lineEnabled;
-      return '<div class="scrim"><div class="sheet"><h3>この内容で確定しますか?</h3>' + rows +
-        '<div class="conf-note">' + (line ? 'LINEグループに投稿し、Googleカレンダーにも反映します。' : '未締切の場合は、回答も同時に締め切ります。') + '</div>' +
-        '<div class="conf-btns"><button class="ghost" style="height:56px" data-a="closeDialog">戻る</button>' +
-        '<button class="go" data-a="confirm">' + (line ? '確定して投稿' : '確定する') + '</button></div></div></div>';
-    }
+    if (S.screen === 'alloc' && S.alloc.pending) return viewAllocMove();
     return '';
   }
 
@@ -767,7 +849,7 @@
       return;
     }
     var team = teamOf(member.teamId);
-    var isAdmin = !!ADMIN_SCREENS[S.screen];
+    var isAdmin = !!ADMIN_SCREENS[S.screen] || (S.screen === 'calendar' && S.cal.mode === 'admin');
     var previous = document.getElementById('mainScroll');
     var keepScroll = previous && previous.getAttribute('data-screen') === S.screen ? previous.scrollTop : 0;
     var body = S.screen === 'answer' ? viewAnswer(member, team)
@@ -841,17 +923,53 @@
   }
 
   function openAdminScreen(screen) {
+    if (screen === 'alloc') { openAlloc(); return; }
     S.screen = screen;
     S.dialog = null;
     render();
-    if (screen === 'alloc') adminCall('apiAllocation');
     if (screen === 'contacts') adminCall('apiContacts');
     if (screen === 'team') adminCall('apiTeamAdmin', [teamIdForAdmin()]);
     if (screen === 'power') adminCall('apiPowerAdmin');
   }
 
+  // 割り振り画面を開く。最新の割当を取り直し、画面内の割当(map)を初期化する
+  function openAlloc() {
+    S.screen = 'alloc';
+    S.dialog = null;
+    initAlloc();
+    render();
+    // 最新の割当を取り直す。ただし利用者が操作を始めていたら初期化しない(編集・画面遷移を保持)
+    call('apiAllocation', [token()], function (result) {
+      if (result.ok) { setBoot(result.boot); if (!S.alloc.started) initAlloc(); render(); }
+      else handleResult(result);
+    });
+  }
+  function initAlloc() {
+    var a = S.boot && S.boot.allocation, map = {};
+    if (a && a.alloc) Object.keys(a.alloc).forEach(function (k) { map[k] = a.alloc[k]; });
+    var gym0 = a && a.gyms && a.gyms[0] ? a.gyms[0].id : '';
+    S.alloc = { screen: 'pick', gym: gym0, map: map, pending: null, version: a ? (a.version || 0) : 0, lineText: '', copied: false, started: false };
+  }
+  function scrollTop_() { var m = document.getElementById('mainScroll'); if (m) m.scrollTop = 0; }
+  // 週の状態操作(締切・再開・解除)。割当の map は保持し、boot と表示だけ更新する
+  function allocStateOp(apiName, message) {
+    call(apiName, [token(), S.boot.next], function (result) {
+      if (result.ok) { setBoot(result.boot); render(); toast(message); }
+      else handleResult(result);
+    });
+  }
+
   // メンバーのカレンダー(月表示)。予定は boot に含まれる。開くたびに最新を取り直す
   function openMemberCalendar() {
+    S.cal.mode = 'member';
+    openCalendar_();
+  }
+  // 管理画面のカレンダー。管理者・割振担当は割振済みの次の日曜にも登録できる
+  function openAdminCalendar() {
+    S.cal.mode = 'admin';
+    openCalendar_();
+  }
+  function openCalendar_() {
     S.screen = 'calendar';
     S.dialog = null;
     if (S.boot && !S.cal.ym) { var td = calParse(S.boot.today); S.cal.ym = [td.getFullYear(), td.getMonth()]; S.cal.sel = S.boot.next || S.boot.today; }
@@ -901,8 +1019,8 @@
       S.code = '';
       if (result.ok) {
         store.set(KEY.auth, JSON.stringify({ token: result.token, role: result.role, teamId: result.teamId, expires: result.expires }));
-        toast(result.role === 'power' ? '管理者モード' : '担当者モード');
-        openAdminScreen('alloc');
+        toast(result.role === 'power' ? '管理者モード' : 'ログインしました');
+        openAdminScreen(canAllocate() ? 'alloc' : 'contacts');
         return;
       }
       S.codeErr = true;
@@ -927,7 +1045,11 @@
     },
     tab: function (v) {
       if (v === 'admin') { actions.goAdmin(); return; }
-      if (v === 'calendar') { openMemberCalendar(); return; }
+      if (v === 'calendar') {
+        var adminCtx = !!ADMIN_SCREENS[S.screen] || (S.screen === 'calendar' && S.cal.mode === 'admin');
+        if (adminCtx) openAdminCalendar(); else openMemberCalendar();
+        return;
+      }
       if (ADMIN_SCREENS[v]) { openAdminScreen(v); return; }
       S.screen = v;
       S.dialog = null;
@@ -1007,7 +1129,7 @@
 
     // パス入力
     goAdmin: function () {
-      if (token()) { openAdminScreen('alloc'); return; }
+      if (token()) { openAdminScreen(canAllocate() ? 'alloc' : 'contacts'); return; }
       S.dialog = 'code';
       S.passLength = 4;
       S.code = '';
@@ -1045,24 +1167,47 @@
     // 割り振り
     sumWeek: function (v) { S.sumIndex = Number(v); render(); },
     toggleSum: function () { S.sumOpen = !S.sumOpen; if (!S.sumOpen) S.sumIndex = 0; render(); },
-    openMove: function (v) { S.dialog = 'move'; S.moveTeam = v; render(); },
-    move: function (v) {
-      var name = teamOf(S.moveTeam).name;
-      var gym = S.boot.allocation.gyms.filter(function (g) { return g.id === v; })[0];
-      adminCall('apiMoveTeam', [S.boot.next, S.moveTeam, v], name + ' → ' + gym.name);
-      S.dialog = null;
-      render();
+    allocGym: function (v) { S.alloc.started = true; S.alloc.gym = v; render(); },
+    allocTap: function (v) {
+      S.alloc.started = true;
+      var a = S.alloc.map[v];
+      if (a === S.alloc.gym) { delete S.alloc.map[v]; render(); }
+      else if (!a) { S.alloc.map[v] = S.alloc.gym; render(); }
+      else { S.alloc.pending = v; render(); }
     },
-    resetDraft: function () { adminCall('apiResetDraft', [S.boot.next], '自動の割振に戻しました'); },
-    closeWeek: function () { adminCall('apiCloseWeek', [S.boot.next], '回答を締め切りました'); },
-    reopenWeek: function () { adminCall('apiReopenWeek', [S.boot.next], '回答の受付を再開しました'); },
-    unconfirm: function () { adminCall('apiUnconfirm', [S.boot.next], '確定を解除しました'); },
-    openConfirm: function () { S.dialog = 'confirm'; render(); },
-    confirm: function () {
-      S.dialog = null;
-      render();
-      adminCall('apiConfirm', [S.boot.next], '確定しました');
+    allocCancelMove: function () { S.alloc.pending = null; render(); },
+    allocConfirmMove: function () { S.alloc.map[S.alloc.pending] = S.alloc.gym; S.alloc.pending = null; render(); },
+    allocToConfirm: function () { S.alloc.started = true; S.alloc.screen = 'confirm'; render(); scrollTop_(); },
+    allocBack: function () { S.alloc.screen = 'pick'; render(); scrollTop_(); },
+    allocDecide: function () {
+      call('apiSaveAssignment', [token(), S.boot.next, S.alloc.map, S.alloc.version], function (result) {
+        if (result.ok) {
+          setBoot(result.boot);
+          S.alloc.lineText = result.lineText || '';
+          S.alloc.version = (result.boot.allocation && result.boot.allocation.version) || S.alloc.version;
+          S.alloc.screen = 'line';
+          S.alloc.copied = false;
+          render(); scrollTop_(); toast('割当を決定しました');
+        } else if (result.code === 'CONFLICT') {
+          toast(result.message); openAlloc();
+        } else { handleResult(result); }
+      });
     },
+    allocCopyLine: function () {
+      var text = S.alloc.lineText || '';
+      var done = function () { S.alloc.copied = true; render(); toast('コピーしました'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, done);
+      else done();
+    },
+    allocAuto: function () {
+      call('apiResetDraft', [token(), S.boot.next], function (result) {
+        if (result.ok) { setBoot(result.boot); initAlloc(); render(); toast('自動で割り振りました'); }
+        else handleResult(result);
+      });
+    },
+    allocClose: function () { allocStateOp('apiCloseWeek', '回答を締め切りました'); },
+    allocReopen: function () { allocStateOp('apiReopenWeek', '回答の受付を再開しました'); },
+    allocUnconfirm: function () { allocStateOp('apiUnconfirm', '確定を解除しました'); },
 
     // カレンダー(月表示)
     calPick: function (v) { S.cal.sel = v; render(); },
@@ -1089,19 +1234,23 @@
       var f = S.cal.form;
       if (calCannotSave(f)) return;
       var isEdit = !!f.id;
-      call('apiMemberSaveEvent', [S.me, f], function (r) {
+      var onDone = function (r) {
         calApply(r, isEdit ? '予定を修正しました' : '予定を登録しました', function () {
           if (f.date) { var dd = calParse(f.date); S.cal.ym = [dd.getFullYear(), dd.getMonth()]; S.cal.sel = f.date; }
           S.cal.sheet = null; S.cal.form = null;
         });
-      });
+      };
+      if (S.cal.mode === 'admin') call('apiSaveEvent', [token(), f], onDone);
+      else call('apiMemberSaveEvent', [S.me, f], onDone);
     },
     askDeleteEvent: function () { S.cal.deleteId = S.cal.form.id; S.cal.confirmDel = true; render(); },
     cancelDeleteEvent: function () { S.cal.confirmDel = false; S.cal.deleteId = null; render(); },
     doDeleteEvent: function () {
-      call('apiMemberDeleteEvent', [S.me, S.cal.deleteId], function (r) {
+      var onDone = function (r) {
         calApply(r, '予定を削除しました', function () { S.cal.confirmDel = false; S.cal.deleteId = null; S.cal.sheet = null; S.cal.form = null; });
-      });
+      };
+      if (S.cal.mode === 'admin') call('apiDeleteEvent', [token(), S.cal.deleteId], onDone);
+      else call('apiMemberDeleteEvent', [S.me, S.cal.deleteId], onDone);
     },
 
     // チーム管理
@@ -1144,6 +1293,11 @@
     setTeamPass: function () {
       var teams = S.admin.power.teams;
       adminCall('apiSetTeamPass', [draft('p:passTeam', teams[0] && teams[0].id), draft('p:passNew')], 'チームパスを設定しました', { clear: 'p:passNew' });
+    },
+    toggleAllocDuty: function (v) {
+      var t = (S.admin.power.teams || []).filter(function (x) { return x.id === v; })[0];
+      var on = !(t && t.allocDuty);
+      adminCall('apiSetAllocDuty', [v, on], on ? '割振担当にしました' : '割振担当を外しました');
     },
     setPowerPass: function () {
       call('apiSetPowerPass', [token(), draft('p:powerNew'), draft('p:powerConfirm')], function (result) {
