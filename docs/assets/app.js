@@ -6,7 +6,8 @@
   var KEY = { me: 'attendance.me', auth: 'attendance.auth', boot: 'attendance.boot' };
   var LABEL = { yes: '参加', no: '不参加', maybe: '未定' };
   var REASONS = ['学校行事', '地域行事', 'チームの都合', 'その他'];
-  var ADMIN_SCREENS = { alloc: 1, calendar: 1, contacts: 1, team: 1, power: 1 };
+  // カレンダーはメンバーも使える画面にしたので、管理画面(パス必須)の一覧からは外す
+  var ADMIN_SCREENS = { alloc: 1, contacts: 1, team: 1, power: 1 };
 
   // localStorage は使えない環境があるため必ず例外を吸収する
   var store = {
@@ -52,6 +53,11 @@
   function dateLabel(date) {
     var p = date.split('-');
     return Number(p[1]) + '/' + Number(p[2]);
+  }
+
+  // チームの見出しはチーム名の頭文字を使う(A/B/C… の連番記号ではなく)
+  function teamMark(name) {
+    return String(name || '').trim().charAt(0).toUpperCase();
   }
 
   function mapUrl(gym) {
@@ -161,12 +167,12 @@
 
   // ---- 初回(チーム→名前) ----
   function viewOnboard() {
-    var html = '<div class="ob"><img src="assets/logo.png" alt="Attendance">';
+    var html = '<div class="ob"><img src="' + 'assets/logo.png' + '" alt="Attendance">';
     if (!S.obTeam) {
       html += '<h1><span>チームを</span><span>選んでください<i class="acc" style="font-style:normal">.</i></span></h1><div class="ob-list">';
       S.boot.teams.forEach(function (t) {
         var size = S.boot.members.filter(function (m) { return m.teamId === t.id; }).length;
-        html += '<button class="ob-item" data-a="obTeam" data-v="' + esc(t.id) + '"><u>' + esc(t.letter) + '</u><strong>' + esc(t.name) +
+        html += '<button class="ob-item" data-a="obTeam" data-v="' + esc(t.id) + '"><u>' + esc(teamMark(t.name)) + '</u><strong>' + esc(t.name) +
           '</strong><small>' + size + '人</small><i>→</i></button>';
       });
     } else {
@@ -183,9 +189,9 @@
   function viewHeader(isAdmin, member, team) {
     var left = isAdmin
       ? '<button class="back" data-a="tab" data-v="home">← 戻る</button>'
-      : '<img src="assets/logo.png" alt="Attendance">';
+      : '<img src="' + 'assets/logo.png' + '" alt="Attendance">';
     return '<div class="head">' + left + '<span class="spacer"></span>' +
-      '<button class="chip" data-a="openUser"><b>' + esc(team.letter) + '</b>' + esc(member.name) + '</button></div>';
+      '<button class="chip" data-a="openUser"><b>' + esc(teamMark(team.name)) + '</b>' + esc(member.name) + '</button></div>';
   }
 
   // ---- ホーム ----
@@ -363,7 +369,7 @@
       }).join('');
       var rows = g.teams.map(function (t) {
         var ok = t.yes >= 6;
-        return '<button class="team-row" data-a="openMove" data-v="' + esc(t.id) + '"><span class="mark' + (t.id === team.id ? ' mine' : '') + '">' + esc(t.letter) + '</span>' +
+        return '<button class="team-row" data-a="openMove" data-v="' + esc(t.id) + '"><span class="mark' + (t.id === team.id ? ' mine' : '') + '">' + esc(teamMark(t.name)) + '</span>' +
           '<span class="team-main"><strong>' + esc(t.name) + '</strong><span class="team-sub' + (ok ? ' ok' : '') + '">' + (ok ? '6人以上' : '合流') + (t.none ? '・未回答' + t.none : '') + '</span></span>' +
           (t.isHome ? '<span class="home-tag">ホーム</span>' : '') +
           '<b>' + t.yes + '</b><small>移動 →</small></button>';
@@ -411,11 +417,12 @@
     if (!d) return '';
     var gymOptions = cal.gyms.map(function (g) { return [g.id, g.name]; });
     var confirmed = d.state === 'confirmed';
-    var html = '<div class="scrim" data-a="closeDialog"><div class="sheet scroll" data-a="noop"><div class="label">SUN</div><h3>' + dateLabel(d.date) + 'の予定</h3>';
+    var html = '<div class="scrim" data-a="closeDialog"><div class="sheet scroll" data-a="noop"><div class="label">SUN</div><h3>' + dateLabel(d.date) + 'の予定</h3>' +
+      '<div class="share-note"><b>！</b><span>ここで登録・変更した内容は<em>全員のカレンダー</em>に反映されます。自分だけのメモではありません。</span></div>';
 
     html += '<div class="section"><div class="section-head"><span class="label">練習休み</span></div>';
     if (d.dayOff) {
-      html += '<div class="list-row"><span>練習休み <small>' + esc(d.dayOffReason) + '</small></span><button class="link" data-a="clearDayOff">解除</button></div>';
+      html += '<div class="list-row"><span>練習休み <small>' + esc(d.dayOffReason) + (d.dayOffBy ? ' / 登録:' + esc(d.dayOffBy) : '') + '</small></span><button class="link" data-a="clearDayOff">解除</button></div>';
     } else if (!confirmed) {
       html += '<div class="form-row">' + textInput('d:off', '', '理由(任意)', 'text', 50) + '<button class="sub-btn" data-a="setDayOff">休みにする</button></div>';
     }
@@ -423,7 +430,7 @@
 
     html += '<div class="section"><div class="section-head"><span class="label">使用不可の体育館</span></div>';
     d.blocks.forEach(function (x) {
-      html += '<div class="list-row"><span>' + esc(x.gym) + ' <small>' + esc(x.reason) + (x.note ? '(' + esc(x.note) + ')' : '') + '</small></span>' +
+      html += '<div class="list-row"><span>' + esc(x.gym) + ' <small>' + esc(x.reason) + (x.note ? '(' + esc(x.note) + ')' : '') + (x.by ? ' / 登録:' + esc(x.by) : '') + '</small></span>' +
         '<button class="link" data-a="removeBlock" data-v="' + esc(x.id) + '">取り消し</button></div>';
     });
     if (confirmed) {
@@ -437,7 +444,7 @@
 
     html += '<div class="section"><div class="section-head"><span class="label">時間の変更(この日だけ)</span></div>';
     d.hours.forEach(function (x) {
-      html += '<div class="list-row"><span>' + esc(x.gym) + ' <small>' + esc(timeText(x)) + '</small></span>' +
+      html += '<div class="list-row"><span>' + esc(x.gym) + ' <small>' + esc(timeText(x)) + (x.by ? ' / 登録:' + esc(x.by) : '') + '</small></span>' +
         '<button class="link" data-a="clearHours" data-v="' + esc(x.gymId) + '">取り消し</button></div>';
     });
     html += '<div class="form-row">' + selectInput('d:hoursGym', gymOptions, gymOptions[0] && gymOptions[0][0]) + '</div>' +
@@ -465,7 +472,7 @@
         return '<div class="contact"><span class="role">' + label + '</span>' +
           (c ? '<b>' + esc(c.name) + '</b>' + contactValue(c.contact) : '<span class="mute">未登録</span>') + '</div>';
       };
-      html += '<div class="contact-team"><h3><span class="mark">' + esc(t.letter) + '</span>' + esc(t.teamName) + '</h3>' + row('代表', t.rep) + row('副代表', t.vice) + '</div>';
+      html += '<div class="contact-team"><h3><span class="mark">' + esc(teamMark(t.teamName)) + '</span>' + esc(t.teamName) + '</h3>' + row('代表', t.rep) + row('副代表', t.vice) + '</div>';
     });
     return html;
   }
@@ -480,7 +487,7 @@
 
     if (S.admin.teamList) {
       html += '<div class="team-chips">' + S.admin.teamList.map(function (t) {
-        return '<button class="team-chip' + (t.id === team.teamId ? ' on' : '') + (t.passSet ? '' : ' unset') + '" data-a="pickTeam" data-v="' + esc(t.id) + '">' + esc(t.letter) + '</button>';
+        return '<button class="team-chip' + (t.id === team.teamId ? ' on' : '') + (t.passSet ? '' : ' unset') + '" data-a="pickTeam" data-v="' + esc(t.id) + '">' + esc(teamMark(t.name)) + '</button>';
       }).join('') + '</div>';
     }
 
@@ -539,7 +546,7 @@
 
     html += '<div class="section"><div class="section-head"><span class="label">チームパス</span><span class="label">' + data.teams.length + 'チーム</span></div>';
     data.teams.forEach(function (t) {
-      html += '<div class="list-row pass-row"><span class="mark">' + esc(t.letter) + '</span><span class="pass-name">' + esc(t.name) + '</span>' + passCell(t) + '</div>';
+      html += '<div class="list-row pass-row"><span class="mark">' + esc(teamMark(t.name)) + '</span><span class="pass-name">' + esc(t.name) + '</span>' + passCell(t) + '</div>';
     });
     html += '<div class="field-label">設定・変更</div><div class="form-row">' +
       selectInput('p:passTeam', data.teams.map(function (t) { return [t.id, t.name]; }), data.teams[0] && data.teams[0].id) + '</div>' +
@@ -557,8 +564,8 @@
   function viewTabs(isAdmin) {
     var who = auth();
     var tabs = isAdmin
-      ? [['alloc', '割り振り'], ['calendar', 'カレンダー'], ['contacts', '連絡先'], ['team', 'チーム管理']]
-      : [['home', 'ホーム'], ['answer', '出欠'], ['admin', '管理画面']];
+      ? [['alloc', '割り振り'], ['contacts', '連絡先'], ['team', 'チーム管理']]
+      : [['home', 'ホーム'], ['answer', '出欠'], ['calendar', 'カレンダー'], ['admin', '管理画面']];
     if (isAdmin && who && who.role === 'power') tabs.push(['power', '管理者']);
     var cols = ' style="grid-template-columns:repeat(' + tabs.length + ',1fr)"';
     return '<div class="tabs"' + cols + '>' + tabs.map(function (t, i) {
@@ -618,7 +625,7 @@
     }
     if (S.dialog === 'confirm') {
       var rows = view.gyms.map(function (g) {
-        return '<div class="conf-row"><b>' + esc(g.name) + '</b><span>' + esc(g.teams.map(function (t) { return t.letter; }).join(' / ')) + '</span><strong>' + g.total + '</strong></div>';
+        return '<div class="conf-row"><b>' + esc(g.name) + '</b><span>' + esc(g.teams.map(function (t) { return teamMark(t.name); }).join(' / ')) + '</span><strong>' + g.total + '</strong></div>';
       }).join('');
       var line = S.boot.lineEnabled;
       return '<div class="scrim"><div class="sheet"><h3>この内容で確定しますか?</h3>' + rows +
@@ -735,10 +742,29 @@
     S.dialog = null;
     render();
     if (screen === 'alloc') adminCall('apiAllocation');
-    if (screen === 'calendar') adminCall('apiCalendar');
     if (screen === 'contacts') adminCall('apiContacts');
     if (screen === 'team') adminCall('apiTeamAdmin', [teamIdForAdmin()]);
     if (screen === 'power') adminCall('apiPowerAdmin');
+  }
+
+  // メンバーのカレンダー。パス不要で、読み込み・書き込みは本人のメンバーIDで行う
+  function openMemberCalendar() {
+    S.screen = 'calendar';
+    S.dialog = null;
+    render();
+    call('apiMemberCalendar', [S.me], function (result) {
+      if (result.ok) { S.admin.calendar = result.calendar; render(); }
+      else toast(result.message);
+    });
+  }
+
+  // カレンダーの登録・変更(メンバー版)。シートを開いたまま内容を更新する
+  function memberCalCall(name, extra, message, options) {
+    var opts = options || {};
+    call(name, [S.me].concat(extra || []), function (result) {
+      if (handleResult(result, message, opts.keep) && opts.clear) clearDrafts(opts.clear);
+      if (result.ok && opts.clear) render();
+    });
   }
 
   function saveNote(date, note) {
@@ -795,6 +821,7 @@
     },
     tab: function (v) {
       if (v === 'admin') { actions.goAdmin(); return; }
+      if (v === 'calendar') { openMemberCalendar(); return; }
       if (ADMIN_SCREENS[v]) { openAdminScreen(v); return; }
       S.screen = v;
       S.dialog = null;
@@ -938,20 +965,20 @@
       clearDrafts('d:');
       render();
     },
-    setDayOff: function () { adminCall('apiSetDayOff', [S.dayDate, draft('d:off')], '練習休みにしました', { keep: true, clear: 'd:off' }); },
-    clearDayOff: function () { adminCall('apiClearDayOff', [S.dayDate], '練習休みを解除しました', { keep: true }); },
+    setDayOff: function () { memberCalCall('apiMemberSetDayOff', [S.dayDate, draft('d:off')], '練習休みにしました', { keep: true, clear: 'd:off' }); },
+    clearDayOff: function () { memberCalCall('apiMemberClearDayOff', [S.dayDate], '練習休みを解除しました', { keep: true }); },
     addBlock: function () {
       var gyms = S.admin.calendar.gyms;
-      adminCall('apiAddBlock', [S.dayDate, draft('d:blockGym', gyms[0] && gyms[0].id), draft('d:blockReason', REASONS[0]), draft('d:blockNote')],
+      memberCalCall('apiMemberAddBlock', [S.dayDate, draft('d:blockGym', gyms[0] && gyms[0].id), draft('d:blockReason', REASONS[0]), draft('d:blockNote')],
         '使用不可を登録しました', { keep: true, clear: 'd:blockNote' });
     },
-    removeBlock: function (v) { adminCall('apiRemoveBlock', [S.dayDate, v], '取り消しました', { keep: true }); },
+    removeBlock: function (v) { memberCalCall('apiMemberRemoveBlock', [S.dayDate, v], '取り消しました', { keep: true }); },
     setHours: function () {
       var gyms = S.admin.calendar.gyms;
-      adminCall('apiSetDayHours', [S.dayDate, draft('d:hoursGym', gyms[0] && gyms[0].id), draft('d:start'), draft('d:end')],
+      memberCalCall('apiMemberSetDayHours', [S.dayDate, draft('d:hoursGym', gyms[0] && gyms[0].id), draft('d:start'), draft('d:end')],
         '時間を変更しました', { keep: true, clear: 'd:start' });
     },
-    clearHours: function (v) { adminCall('apiClearDayHours', [S.dayDate, v], '取り消しました', { keep: true }); },
+    clearHours: function (v) { memberCalCall('apiMemberClearDayHours', [S.dayDate, v], '取り消しました', { keep: true }); },
 
     // チーム管理
     pickTeam: function (v) {
