@@ -341,8 +341,8 @@ select.text-input{padding:0 8px}
 .cyet{border:1px dashed #3b4a12;padding:12px 14px;font-size:13px;color:var(--mute)}
 .cyet b{color:var(--acc)}
 .cempty{border:1px solid var(--rule);padding:16px 14px;font-size:13px;color:var(--mute);text-align:center}
-.cfab{position:fixed;left:50%;transform:translateX(-50%);bottom:84px;height:52px;padding:0 22px;border:0;background:var(--acc);color:var(--onacc);display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;z-index:8}
-.cfab b{font-size:20px;font-weight:400}
+.cadd{flex:none;display:flex;align-items:center;gap:4px;height:34px;padding:0 12px;border:0;background:var(--acc);color:var(--onacc);font-size:13px;font-weight:700;white-space:nowrap}
+.cadd b{font-size:16px;font-weight:400}
 
 /* 予定の登録・修正シート / 削除確認 */
 .scrim.center{align-items:center;padding:0 20px}

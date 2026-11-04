@@ -504,13 +504,12 @@
       + '<button class="carrow" data-a="calPrev"' + (atMin ? ' disabled' : '') + '>‹</button>'
       + '<button class="cthis" data-a="calThis">今月</button>'
       + '<button class="carrow" data-a="calNext">›</button></div></div>'
-      + '<div class="cfilters">' + chips + '</div>'
+      + '<div class="cfilters">' + chips + '<button class="cadd" data-a="calNew"><b>＋</b>予定を登録</button></div>'
       + '<div class="cwk"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div>'
       + '<div class="cgrid">' + cells + '</div>'
       + '<div class="cdayhd"><b>' + (sd.getMonth() + 1) + '月' + sd.getDate() + '日（' + CAL_WD[sd.getDay()] + '）</b><span class="label">' + (calIsSun(c.sel) ? '練習日' : '') + '</span></div>'
       + list
-      + '<div style="height:84px"></div>'
-      + '<button class="cfab" data-a="calNew"><b>＋</b>予定を登録</button></div>';
+      + '</div>';
   }
 
   // 登録・修正シート(メンバーが登録。登録者＝本人。全員に共有される)
