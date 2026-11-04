@@ -429,13 +429,7 @@
     if (e.type === 'rest') return { title: calTname(e.teamId) + '　休み', sub: e.reason + (e.memo ? '・' + e.memo : '') };
     return { title: e.memo || 'その他の予定', sub: '' };
   }
-  function calUpcomingSundays() {
-    var out = [], d = calParse(S.boot.today);
-    d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
-    for (var k = 0; k < 8; k++) { out.push(calIso(d)); d.setDate(d.getDate() + 7); }
-    return out;
-  }
-  function calTargetDates(f) { return f.type === 'other' ? (f.date ? [f.date] : []) : f.dates; }
+  function calTargetDates(f) { return f.date ? [f.date] : []; }
   function calCannotSave(f) { return !calTargetDates(f).length || (f.type === 'other' && !String(f.memo).trim()) || (f.type === 'closed' && !f.gym); }
   function calSheetWarn(f) {
     if (f.type === 'other') return '';
@@ -449,11 +443,10 @@
   }
   function calNewForm() {
     var sel = S.cal.sel, today = S.boot.today;
-    var ds = calIsSun(sel) && sel >= today ? [sel] : [];
-    return { id: null, type: 'closed', dates: ds, date: sel >= today ? sel : today, gym: myHomeGym(), team: myTeamId(), reason: CAL_REASONS.closed[0], memo: '' };
+    return { id: null, type: 'closed', date: sel >= today ? sel : today, gym: myHomeGym(), team: myTeamId(), reason: CAL_REASONS.closed[0], memo: '' };
   }
   function calEditForm(e) {
-    return { id: e.id, type: e.type, dates: e.type === 'other' ? [] : [e.date], date: e.date, gym: e.gymId || myHomeGym(), team: e.teamId || myTeamId(), reason: e.reason || (CAL_REASONS[e.type] ? CAL_REASONS[e.type][0] : ''), memo: e.memo || '' };
+    return { id: e.id, type: e.type, date: e.date, gym: e.gymId || myHomeGym(), team: e.teamId || myTeamId(), reason: e.reason || (CAL_REASONS[e.type] ? CAL_REASONS[e.type][0] : ''), memo: e.memo || '' };
   }
 
   function viewCal() {
@@ -519,12 +512,7 @@
       var on = f.type === k, col = CAL_TYPES[k].color;
       return '<button data-a="evType" data-v="' + k + '"' + (on ? ' class="on" style="border-color:' + col + ';color:' + col + '"' : '') + '>' + CAL_TYPES[k].label + '</button>';
     }).join('');
-    var suns = calUpcomingSundays();
-    f.dates.forEach(function (d) { if (suns.indexOf(d) < 0) suns.unshift(d); });
-    var dateField = f.type === 'other'
-      ? '<label class="cfld"><span>日付</span><input type="date" data-evfield="date" value="' + esc(f.date) + '" min="' + esc(S.boot.today) + '"></label>'
-      : '<div class="cfld"><span>' + (isEdit ? '日付（日曜）' : '日付（日曜・複数選べます）') + '</span><div class="csuns">'
-        + suns.map(function (d) { return '<button class="' + (f.dates.indexOf(d) >= 0 ? 'on' : '') + '" data-a="evDate" data-v="' + d + '">' + calMd(d) + '</button>'; }).join('') + '</div></div>';
+    var dateField = '<label class="cfld"><span>日付</span><input type="date" data-evfield="date" value="' + esc(f.date) + '" min="' + esc(S.boot.today) + '"></label>';
     var gymField = '';
     if (f.type === 'closed') {
       var mh = myHomeGym();
@@ -543,7 +531,7 @@
       + CAL_REASONS[f.type].map(function (r) { return '<option' + (r === f.reason ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select></label>';
     var memoPh = f.type === 'closed' ? '例：運動会' : f.type === 'rest' ? '例：大会参加のため' : '例：代表者ミーティング';
     var memoField = '<label class="cfld"><span>' + (f.type === 'other' ? '内容' : 'メモ（任意）') + '</span><input type="text" data-evfield="memo" maxlength="100" value="' + esc(f.memo) + '" placeholder="' + memoPh + '"></label>';
-    var w = calSheetWarn(f), n = calTargetDates(f).length;
+    var w = calSheetWarn(f);
     return '<div class="scrim" data-a="closeEvSheet" data-self="1"><div class="evsheet" data-a="noop">'
       + '<div class="evhd"><b>' + (isEdit ? '予定を修正' : '予定を登録') + '</b><button class="evx" data-a="closeEvSheet">×</button></div>'
       + '<div class="share-note"><b>！</b><span>この予定は<em>全員のカレンダー</em>に反映されます（自分だけのメモではありません）。</span></div>'
@@ -552,7 +540,7 @@
       + '<div class="cfld"><span>登録者</span><div class="evby">' + esc(mem ? mem.name : '') + '</div></div>'
       + (w ? '<div class="cwbox">' + esc(w) + '</div>' : '')
       + '<div class="evrow">' + (isEdit ? '<button class="cbtn warn" data-a="askDeleteEvent">削除</button>' : '')
-      + '<button class="cbtn go" style="flex:2" data-a="saveEvent"' + (calCannotSave(f) ? ' disabled' : '') + '>' + (isEdit ? '修正を保存' : (n > 1 ? n + '件を登録' : '登録')) + '</button></div>'
+      + '<button class="cbtn go" style="flex:2" data-a="saveEvent"' + (calCannotSave(f) ? ' disabled' : '') + '>' + (isEdit ? '修正を保存' : '登録') + '</button></div>'
       + '</div></div>';
   }
   function viewEventDelete() {
@@ -1092,25 +1080,16 @@
     closeEvSheet: function () { S.cal.sheet = null; S.cal.form = null; render(); },
     evType: function (v) {
       var f = S.cal.form; f.type = v; f.reason = CAL_REASONS[v] ? CAL_REASONS[v][0] : '';
-      if (v !== 'other') f.dates = f.dates.length ? f.dates : (calIsSun(f.date) ? [f.date] : []);
       if (!f.gym) f.gym = myHomeGym();
-      render();
-    },
-    evDate: function (v) {
-      var f = S.cal.form;
-      if (S.cal.sheet === 'edit') f.dates = [v];
-      else if (f.dates.indexOf(v) >= 0) f.dates = f.dates.filter(function (x) { return x !== v; });
-      else { f.dates.push(v); f.dates.sort(); }
       render();
     },
     saveEvent: function () {
       var f = S.cal.form;
       if (calCannotSave(f)) return;
-      var n = calTargetDates(f).length, isEdit = !!f.id;
+      var isEdit = !!f.id;
       call('apiMemberSaveEvent', [S.me, f], function (r) {
-        calApply(r, isEdit ? '予定を修正しました' : n + '件の予定を登録しました', function () {
-          var first = calTargetDates(f)[0];
-          if (first) { var dd = calParse(first); S.cal.ym = [dd.getFullYear(), dd.getMonth()]; S.cal.sel = first; }
+        calApply(r, isEdit ? '予定を修正しました' : '予定を登録しました', function () {
+          if (f.date) { var dd = calParse(f.date); S.cal.ym = [dd.getFullYear(), dd.getMonth()]; S.cal.sel = f.date; }
           S.cal.sheet = null; S.cal.form = null;
         });
       });
@@ -1202,7 +1181,6 @@
     var ef = event.target.getAttribute('data-evfield');
     if (ef && S.cal.form) {
       S.cal.form[ef] = event.target.value;
-      if (ef === 'date' && S.cal.form.type !== 'other') S.cal.form.dates = calIsSun(event.target.value) ? [event.target.value] : S.cal.form.dates;
       if (ef !== 'memo') render();
     }
   });
