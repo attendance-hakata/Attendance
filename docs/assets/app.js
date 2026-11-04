@@ -40,7 +40,9 @@
     error: null,
     revealPass: {},    // 管理者ページで番号を表示しているチーム
     // 管理画面のデータ。連絡先やパスを含むので端末には保存しない
-    admin: { calendar: null, contacts: null, team: null, teamList: null, teamId: null, power: null }
+    admin: { calendar: null, contacts: null, team: null, teamList: null, teamId: null, power: null },
+    // メンバーのカレンダー(月表示)の状態
+    cal: { ym: null, sel: '', filters: { assign: true, closed: true, rest: true, other: true }, sheet: null, form: null, confirmDel: false, deleteId: null }
   };
 
   // ---- 共通処理 ----
@@ -86,8 +88,6 @@
       return res.json();
     }).then(function (json) {
       setBusy(-1);
-      // サーバーは { ok:true, data } / { ok:false, error:{code,message} } を返す。
-      // 画面側の既存ロジックに合わせ、data を平らにした { ok, ... } の形へ戻す
       if (json && json.ok) {
         var flat = json.data || {};
         flat.ok = true;
@@ -392,66 +392,179 @@
     return '<div class="empty">読み込み中…</div>';
   }
 
-  function viewCalendar() {
-    var cal = S.admin.calendar;
-    var html = '<div class="admin-title"><div class="title-sm">カレンダー<span class="acc">.</span></div></div>';
-    if (!cal) return html + adminLoading();
-    cal.days.forEach(function (d) {
-      var lines = [];
-      if (d.dayOff) lines.push('<span class="off">練習休み' + (d.dayOffReason ? ' ' + esc(d.dayOffReason) : '') + '</span>');
-      d.blocks.forEach(function (x) {
-        lines.push('<span><span class="strike">' + esc(x.gym) + '</span> <small>' + esc(x.note || x.reason) + '</small></span>');
-      });
-      d.hours.forEach(function (x) { lines.push('<span>' + esc(x.gym) + ' ' + esc(timeText(x)) + '</span>'); });
-      if (!lines.length) lines.push('<span class="plain">通常どおり</span>');
-      if (d.state === 'confirmed') lines.push('<span class="plain">確定済み</span>');
-      html += '<button class="day" data-a="openDay" data-v="' + d.date + '"><span class="day-date">' + dateLabel(d.date) + '</span>' +
-        '<span class="day-body">' + lines.join('') + '</span><i>→</i></button>';
-    });
-    return html;
+  // ===== カレンダー(月表示。モックアップ準拠) =====
+  var CAL_TYPES = {
+    assign: { label: '割振', color: 'var(--acc)' },
+    closed: { label: '使用不可', color: 'var(--warn)' },
+    rest: { label: 'チーム休み', color: 'var(--blue)' },
+    other: { label: 'その他', color: 'var(--tx)' }
+  };
+  var CAL_REASONS = { closed: ['学校行事', '地域行事', '選挙・公共行事', 'その他'], rest: ['チームの都合', '大会・遠征', 'その他'] };
+  var CAL_WD = ['日', '月', '火', '水', '木', '金', '土'];
+
+  function calPad(n) { return (n < 10 ? '0' : '') + n; }
+  function calIso(d) { return d.getFullYear() + '-' + calPad(d.getMonth() + 1) + '-' + calPad(d.getDate()); }
+  function calParse(t) { var p = String(t).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function calMd(t) { var d = calParse(t); return (d.getMonth() + 1) + '/' + d.getDate(); }
+  function calIsSun(t) { return calParse(t).getDay() === 0; }
+  function calTeam(id) { return (S.boot.teams || []).filter(function (t) { return t.id === id; })[0]; }
+  function calGym(id) { return (S.boot.gyms || []).filter(function (g) { return g.id === id; })[0]; }
+  function calTname(id) { var t = calTeam(id); return t ? t.name : ''; }
+  function calGname(id) { var g = calGym(id); return g ? g.name : ''; }
+  function calEvents() { return S.boot.events || []; }
+  function myTeamId() { var m = me(); return m ? m.teamId : ''; }
+  function myHomeGym() { var t = calTeam(myTeamId()); return t && t.homeGymId ? t.homeGymId : ''; }
+
+  // カレンダーに出す割振。今週(next)のみサーバーの集計を表示、未来の日曜は「未作成」
+  function calAssignFor(date) {
+    var a = S.boot.allocation;
+    if (date === S.boot.next && a && !a.dayOff) {
+      var status = a.state === 'confirmed' ? '確定済み' : a.adjusted ? '調整中' : '草案（未確定）';
+      return { status: status, rows: (a.gyms || []).map(function (g) { return { gym: g.name, teams: g.teams.map(function (t) { return t.name; }).join('、') }; }) };
+    }
+    return null;
+  }
+  function calDescribe(e) {
+    if (e.type === 'closed') return { title: calGname(e.gymId) + '　使用不可', sub: e.reason + (e.memo ? '・' + e.memo : '') };
+    if (e.type === 'rest') return { title: calTname(e.teamId) + '　休み', sub: e.reason + (e.memo ? '・' + e.memo : '') };
+    return { title: e.memo || 'その他の予定', sub: '' };
+  }
+  function calUpcomingSundays() {
+    var out = [], d = calParse(S.boot.today);
+    d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
+    for (var k = 0; k < 8; k++) { out.push(calIso(d)); d.setDate(d.getDate() + 7); }
+    return out;
+  }
+  function calTargetDates(f) { return f.type === 'other' ? (f.date ? [f.date] : []) : f.dates; }
+  function calCannotSave(f) { return !calTargetDates(f).length || (f.type === 'other' && !String(f.memo).trim()) || (f.type === 'closed' && !f.gym); }
+  function calSheetWarn(f) {
+    if (f.type === 'other') return '';
+    var a = S.boot.allocation;
+    if (calTargetDates(f).indexOf(S.boot.next) >= 0 && a && !a.dayOff) {
+      return a.state === 'confirmed'
+        ? calMd(S.boot.next) + 'は割振が確定済みのため、登録できません。'
+        : calMd(S.boot.next) + 'は割振の草案があります。保存すると草案に反映されます。';
+    }
+    return '';
+  }
+  function calNewForm() {
+    var sel = S.cal.sel, today = S.boot.today;
+    var ds = calIsSun(sel) && sel >= today ? [sel] : [];
+    return { id: null, type: 'closed', dates: ds, date: sel >= today ? sel : today, gym: myHomeGym(), team: myTeamId(), reason: CAL_REASONS.closed[0], memo: '' };
+  }
+  function calEditForm(e) {
+    return { id: e.id, type: e.type, dates: e.type === 'other' ? [] : [e.date], date: e.date, gym: e.gymId || myHomeGym(), team: e.teamId || myTeamId(), reason: e.reason || (CAL_REASONS[e.type] ? CAL_REASONS[e.type][0] : ''), memo: e.memo || '' };
   }
 
-  function viewDaySheet() {
-    var cal = S.admin.calendar;
-    var d = cal && cal.days.filter(function (x) { return x.date === S.dayDate; })[0];
-    if (!d) return '';
-    var gymOptions = cal.gyms.map(function (g) { return [g.id, g.name]; });
-    var confirmed = d.state === 'confirmed';
-    var html = '<div class="scrim" data-a="closeDialog"><div class="sheet scroll" data-a="noop"><div class="label">SUN</div><h3>' + dateLabel(d.date) + 'の予定</h3>' +
-      '<div class="share-note"><b>！</b><span>ここで登録・変更した内容は<em>全員のカレンダー</em>に反映されます。自分だけのメモではありません。</span></div>';
+  function viewCal() {
+    if (!S.boot) return adminLoading();
+    var c = S.cal;
+    if (!c.ym) { var td0 = calParse(S.boot.today); c.ym = [td0.getFullYear(), td0.getMonth()]; }
+    if (!c.sel) c.sel = S.boot.next || S.boot.today;
+    var today = S.boot.today, mt = calParse(today), minYm = [mt.getFullYear(), mt.getMonth()];
+    var y = c.ym[0], m = c.ym[1];
+    var atMin = y < minYm[0] || (y === minYm[0] && m <= minYm[1]);
+    var offset = new Date(y, m, 1).getDay();
+    var weeks = Math.ceil((offset + new Date(y, m + 1, 0).getDate()) / 7);
 
-    html += '<div class="section"><div class="section-head"><span class="label">練習休み</span></div>';
-    if (d.dayOff) {
-      html += '<div class="list-row"><span>練習休み <small>' + esc(d.dayOffReason) + (d.dayOffBy ? ' / 登録:' + esc(d.dayOffBy) : '') + '</small></span><button class="link" data-a="clearDayOff">解除</button></div>';
-    } else if (!confirmed) {
-      html += '<div class="form-row">' + textInput('d:off', '', '理由(任意)', 'text', 50) + '<button class="sub-btn" data-a="setDayOff">休みにする</button></div>';
+    var cells = '';
+    for (var i = 0; i < weeks * 7; i++) {
+      var d = new Date(y, m, 1 - offset + i), t = calIso(d), bars = '', cnt = 0;
+      var a = c.filters.assign && calAssignFor(t);
+      if (a) { bars += '<i style="background:var(--acc)' + (a.status === '確定済み' ? '' : ';opacity:.5') + '"></i>'; cnt++; }
+      calEvents().forEach(function (e) {
+        if (e.date === t && c.filters[e.type] && cnt < 4) { bars += '<i style="background:' + CAL_TYPES[e.type].color + '"></i>'; cnt++; }
+      });
+      var cls = 'cday' + (d.getMonth() !== m ? ' out' : '') + (d.getDay() === 0 && d.getMonth() === m ? ' sun' : '') + (t === today ? ' today' : '') + (t === c.sel ? ' sel' : '');
+      cells += '<button class="' + cls + '" data-a="calPick" data-v="' + t + '"><span class="cn">' + d.getDate() + '</span><span class="cbars">' + bars + '</span></button>';
     }
-    html += '</div>';
+    var chips = ['assign', 'closed', 'rest', 'other'].map(function (k) {
+      return '<button class="cchip' + (c.filters[k] ? '' : ' off') + '" data-a="calFilter" data-v="' + k + '"><i style="background:' + CAL_TYPES[k].color + '"></i>' + CAL_TYPES[k].label + '</button>';
+    }).join('');
 
-    html += '<div class="section"><div class="section-head"><span class="label">使用不可の体育館</span></div>';
-    d.blocks.forEach(function (x) {
-      html += '<div class="list-row"><span>' + esc(x.gym) + ' <small>' + esc(x.reason) + (x.note ? '(' + esc(x.note) + ')' : '') + (x.by ? ' / 登録:' + esc(x.by) : '') + '</small></span>' +
-        '<button class="link" data-a="removeBlock" data-v="' + esc(x.id) + '">取り消し</button></div>';
-    });
-    if (confirmed) {
-      html += '<div class="note-line">確定済みの週には登録できません。</div>';
-    } else {
-      html += '<div class="form-row">' + selectInput('d:blockGym', gymOptions, gymOptions[0] && gymOptions[0][0]) +
-        selectInput('d:blockReason', REASONS.map(function (r) { return [r, r]; }), REASONS[0]) + '</div>' +
-        '<div class="form-row">' + textInput('d:blockNote', '', 'メモ(例:運動会)', 'text', 50) + '<button class="sub-btn" data-a="addBlock">登録</button></div>';
+    var sd = calParse(c.sel), list = '';
+    var a2 = c.filters.assign && calAssignFor(c.sel);
+    if (a2) {
+      list += '<div class="casg"><div class="chd"><span class="ct">割振</span><span class="cs">' + esc(a2.status) + '</span><span class="cr">割振は管理画面で決定・ここでは閲覧のみ</span></div>'
+        + (a2.rows.length ? a2.rows.map(function (r) { return '<div class="cln"><b>' + esc(r.gym) + '</b><span>' + esc(r.teams) + '</span></div>'; }).join('') : '<div class="cln">割当なし</div>') + '</div>';
+    } else if (c.filters.assign && calIsSun(c.sel) && c.sel > S.boot.next) {
+      list += '<div class="cyet"><b>割振</b>　未作成（金曜夕方に草案を作成）</div>';
     }
-    html += '</div>';
-
-    html += '<div class="section"><div class="section-head"><span class="label">時間の変更(この日だけ)</span></div>';
-    d.hours.forEach(function (x) {
-      html += '<div class="list-row"><span>' + esc(x.gym) + ' <small>' + esc(timeText(x)) + (x.by ? ' / 登録:' + esc(x.by) : '') + '</small></span>' +
-        '<button class="link" data-a="clearHours" data-v="' + esc(x.gymId) + '">取り消し</button></div>';
+    calEvents().filter(function (e) { return e.date === c.sel && c.filters[e.type]; }).forEach(function (e) {
+      var ds = calDescribe(e), col = CAL_TYPES[e.type].color;
+      list += '<div class="cev"><div class="cbody"><span class="ctag" style="border-color:' + col + ';color:' + col + '">' + CAL_TYPES[e.type].label + '</span>'
+        + '<span class="cttl">' + esc(ds.title) + '</span>' + (ds.sub ? '<span class="csb">' + esc(ds.sub) + '</span>' : '')
+        + (e.by ? '<span class="cby">登録：' + esc(e.by) + '</span>' : '') + '</div>'
+        + '<button class="cedit" data-a="calEdit" data-v="' + esc(e.id) + '">編集</button></div>';
     });
-    html += '<div class="form-row">' + selectInput('d:hoursGym', gymOptions, gymOptions[0] && gymOptions[0][0]) + '</div>' +
-      '<div class="form-row">' + textInput('d:start', '', '', 'time') + '<span class="time-sep">〜</span>' + textInput('d:end', '', '', 'time') +
-      '<button class="sub-btn" data-a="setHours">登録</button></div></div>';
+    if (!list) list = '<div class="cempty">この日の予定はありません</div>';
 
-    return html + '<button class="ghost cancel" data-a="closeDialog">閉じる</button></div></div>';
+    return '<div class="cal">'
+      + '<div class="cmonth"><div class="ctitle">' + y + '年' + (m + 1) + '月</div><div class="cnavs">'
+      + '<button class="carrow" data-a="calPrev"' + (atMin ? ' disabled' : '') + '>‹</button>'
+      + '<button class="cthis" data-a="calThis">今月</button>'
+      + '<button class="carrow" data-a="calNext">›</button></div></div>'
+      + '<div class="cfilters">' + chips + '</div>'
+      + '<div class="cwk"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div>'
+      + '<div class="cgrid">' + cells + '</div>'
+      + '<div class="cdayhd"><b>' + (sd.getMonth() + 1) + '月' + sd.getDate() + '日（' + CAL_WD[sd.getDay()] + '）</b><span class="label">' + (calIsSun(c.sel) ? '練習日' : '') + '</span></div>'
+      + list
+      + '<div style="height:84px"></div>'
+      + '<button class="cfab" data-a="calNew"><b>＋</b>予定を登録</button></div>';
+  }
+
+  // 登録・修正シート(メンバーが登録。登録者＝本人。全員に共有される)
+  function viewEventSheet() {
+    var f = S.cal.form, isEdit = !!f.id, mem = me();
+    var types = ['closed', 'rest', 'other'].map(function (k) {
+      var on = f.type === k, col = CAL_TYPES[k].color;
+      return '<button data-a="evType" data-v="' + k + '"' + (on ? ' class="on" style="border-color:' + col + ';color:' + col + '"' : '') + '>' + CAL_TYPES[k].label + '</button>';
+    }).join('');
+    var suns = calUpcomingSundays();
+    f.dates.forEach(function (d) { if (suns.indexOf(d) < 0) suns.unshift(d); });
+    var dateField = f.type === 'other'
+      ? '<label class="cfld"><span>日付</span><input type="date" data-evfield="date" value="' + esc(f.date) + '" min="' + esc(S.boot.today) + '"></label>'
+      : '<div class="cfld"><span>' + (isEdit ? '日付（日曜）' : '日付（日曜・複数選べます）') + '</span><div class="csuns">'
+        + suns.map(function (d) { return '<button class="' + (f.dates.indexOf(d) >= 0 ? 'on' : '') + '" data-a="evDate" data-v="' + d + '">' + calMd(d) + '</button>'; }).join('') + '</div></div>';
+    var gymField = '';
+    if (f.type === 'closed') {
+      var mh = myHomeGym();
+      var hint = !f.gym ? ['体育館を選んでください', 'warn'] : f.gym === mh ? ['自分のチームのホームを初期表示しています', ''] : ['他チームの体育館を代わりに登録します', 'warn'];
+      gymField = '<label class="cfld"><span>体育館</span><select data-evfield="gym">' + (mh ? '' : '<option value="">選択してください</option>')
+        + (S.boot.gyms || []).map(function (g) { return '<option value="' + g.id + '"' + (g.id === f.gym ? ' selected' : '') + '>' + esc(g.name) + '</option>'; }).join('')
+        + '</select><span class="chint ' + hint[1] + '">' + esc(hint[0]) + '</span></label>';
+    }
+    var teamField = '';
+    if (f.type === 'rest') {
+      teamField = '<label class="cfld"><span>チーム</span><select data-evfield="team">'
+        + (S.boot.teams || []).map(function (t) { return '<option value="' + t.id + '"' + (t.id === f.team ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('')
+        + '</select><span class="chint ' + (f.team === myTeamId() ? '' : 'warn') + '">' + (f.team === myTeamId() ? '自分のチームを初期表示しています' : '他チームの休みを代わりに登録します') + '</span></label>';
+    }
+    var reasonField = f.type === 'other' ? '' : '<label class="cfld"><span>理由</span><select data-evfield="reason">'
+      + CAL_REASONS[f.type].map(function (r) { return '<option' + (r === f.reason ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select></label>';
+    var memoPh = f.type === 'closed' ? '例：運動会' : f.type === 'rest' ? '例：大会参加のため' : '例：代表者ミーティング';
+    var memoField = '<label class="cfld"><span>' + (f.type === 'other' ? '内容' : 'メモ（任意）') + '</span><input type="text" data-evfield="memo" maxlength="100" value="' + esc(f.memo) + '" placeholder="' + memoPh + '"></label>';
+    var w = calSheetWarn(f), n = calTargetDates(f).length;
+    return '<div class="scrim" data-a="closeEvSheet" data-self="1"><div class="evsheet" data-a="noop">'
+      + '<div class="evhd"><b>' + (isEdit ? '予定を修正' : '予定を登録') + '</b><button class="evx" data-a="closeEvSheet">×</button></div>'
+      + '<div class="share-note"><b>！</b><span>この予定は<em>全員のカレンダー</em>に反映されます（自分だけのメモではありません）。</span></div>'
+      + '<div class="cfld"><span>種類</span><div class="cseg3">' + types + '</div></div>'
+      + dateField + gymField + teamField + reasonField + memoField
+      + '<div class="cfld"><span>登録者</span><div class="evby">' + esc(mem ? mem.name : '') + '</div></div>'
+      + (w ? '<div class="cwbox">' + esc(w) + '</div>' : '')
+      + '<div class="evrow">' + (isEdit ? '<button class="cbtn warn" data-a="askDeleteEvent">削除</button>' : '')
+      + '<button class="cbtn go" style="flex:2" data-a="saveEvent"' + (calCannotSave(f) ? ' disabled' : '') + '>' + (isEdit ? '修正を保存' : (n > 1 ? n + '件を登録' : '登録')) + '</button></div>'
+      + '</div></div>';
+  }
+  function viewEventDelete() {
+    var e = calEvents().filter(function (x) { return x.id === S.cal.deleteId; })[0];
+    if (!e) return '';
+    var ds = calDescribe(e);
+    return '<div class="scrim center"><div class="evdialog" data-a="noop">'
+      + '<div class="evq">この予定を削除しますか？</div>'
+      + '<div class="evboxed">' + calMd(e.date) + '　' + esc(ds.title) + (ds.sub ? '（' + esc(ds.sub) + '）' : '') + '</div>'
+      + '<div class="evrow"><button class="cbtn ghost" data-a="cancelDeleteEvent">キャンセル</button><button class="cbtn warnfill" data-a="doDeleteEvent">削除する</button></div>'
+      + '</div></div>';
   }
 
   // ---- 連絡先 ----
@@ -599,13 +712,14 @@
   }
 
   function viewDialog(member, team) {
+    if (S.cal && S.cal.confirmDel) return viewEventDelete();
+    if (S.screen === 'calendar' && S.cal && S.cal.sheet) return viewEventSheet();
     if (S.dialog === 'user') {
       return '<div class="scrim" data-a="closeDialog"><div class="sheet sheet-user" data-a="noop"><h3>' + esc(member.name) + 'さん / ' + esc(team.name) + '</h3>' +
         '<p>この端末にログイン状態を保存しています。</p><button class="ghost strong" data-a="changeUser">ログインを変更する</button></div></div>';
     }
     if (S.dialog === 'code') return viewPass();
     if (S.dialog === 'deleteComment') return viewConfirmSheet('このコメントを削除しますか?', '削除すると元に戻せません。', 'deleteComment', '削除する');
-    if (S.dialog === 'day') return viewDaySheet();
     if (S.dialog === 'removeMember') {
       var target = S.admin.team && S.admin.team.members.filter(function (m) { return m.id === S.removeMemberId; })[0];
       return viewConfirmSheet((target ? target.name : '') + 'さんを削除しますか?', '名簿と集計から外れます。過去の出欠とコメントは残ります。', 'removeMember', '削除する');
@@ -669,7 +783,7 @@
     var keepScroll = previous && previous.getAttribute('data-screen') === S.screen ? previous.scrollTop : 0;
     var body = S.screen === 'answer' ? viewAnswer(member, team)
       : S.screen === 'alloc' ? viewAlloc(team)
-      : S.screen === 'calendar' ? viewCalendar()
+      : S.screen === 'calendar' ? viewCal()
       : S.screen === 'contacts' ? viewContacts()
       : S.screen === 'team' ? viewTeamAdmin()
       : S.screen === 'power' ? viewPowerAdmin()
@@ -747,24 +861,27 @@
     if (screen === 'power') adminCall('apiPowerAdmin');
   }
 
-  // メンバーのカレンダー。パス不要で、読み込み・書き込みは本人のメンバーIDで行う
+  // メンバーのカレンダー(月表示)。予定は boot に含まれる。開くたびに最新を取り直す
   function openMemberCalendar() {
     S.screen = 'calendar';
     S.dialog = null;
+    if (S.boot && !S.cal.ym) { var td = calParse(S.boot.today); S.cal.ym = [td.getFullYear(), td.getMonth()]; S.cal.sel = S.boot.next || S.boot.today; }
     render();
-    call('apiMemberCalendar', [S.me], function (result) {
-      if (result.ok) { S.admin.calendar = result.calendar; render(); }
-      else toast(result.message);
+    call('apiBootstrap', [], function (result) {
+      if (result.ok) { setBoot(result.boot); render(); }
     });
   }
 
-  // カレンダーの登録・変更(メンバー版)。シートを開いたまま内容を更新する
-  function memberCalCall(name, extra, message, options) {
-    var opts = options || {};
-    call(name, [S.me].concat(extra || []), function (result) {
-      if (handleResult(result, message, opts.keep) && opts.clear) clearDrafts(opts.clear);
-      if (result.ok && opts.clear) render();
-    });
+  // カレンダーの登録・削除の結果を反映する。boot を更新し、必要なら選択日・月を合わせる
+  function calApply(result, message, onOk) {
+    if (result.ok) {
+      setBoot(result.boot);
+      if (onOk) onOk();
+      render();
+      if (message) toast(message);
+    } else {
+      toast(result.message);
+    }
   }
 
   function saveNote(date, note) {
@@ -958,27 +1075,54 @@
       adminCall('apiConfirm', [S.boot.next], '確定しました');
     },
 
-    // カレンダー
-    openDay: function (v) {
-      S.dayDate = v;
-      S.dialog = 'day';
-      clearDrafts('d:');
+    // カレンダー(月表示)
+    calPick: function (v) { S.cal.sel = v; render(); },
+    calPrev: function () {
+      var d = new Date(S.cal.ym[0], S.cal.ym[1] - 1, 1), t = calParse(S.boot.today);
+      if (d.getFullYear() < t.getFullYear() || (d.getFullYear() === t.getFullYear() && d.getMonth() < t.getMonth())) return;
+      S.cal.ym = [d.getFullYear(), d.getMonth()]; render();
+    },
+    calNext: function () { var d = new Date(S.cal.ym[0], S.cal.ym[1] + 1, 1); S.cal.ym = [d.getFullYear(), d.getMonth()]; render(); },
+    calThis: function () { var t = calParse(S.boot.today); S.cal.ym = [t.getFullYear(), t.getMonth()]; S.cal.sel = S.boot.today; render(); },
+    calFilter: function (v) { S.cal.filters[v] = !S.cal.filters[v]; render(); },
+    calNew: function () { S.cal.form = calNewForm(); S.cal.sheet = 'new'; render(); },
+    calEdit: function (v) {
+      var e = calEvents().filter(function (x) { return x.id === v; })[0];
+      if (e) { S.cal.form = calEditForm(e); S.cal.sheet = 'edit'; render(); }
+    },
+    closeEvSheet: function () { S.cal.sheet = null; S.cal.form = null; render(); },
+    evType: function (v) {
+      var f = S.cal.form; f.type = v; f.reason = CAL_REASONS[v] ? CAL_REASONS[v][0] : '';
+      if (v !== 'other') f.dates = f.dates.length ? f.dates : (calIsSun(f.date) ? [f.date] : []);
+      if (!f.gym) f.gym = myHomeGym();
       render();
     },
-    setDayOff: function () { memberCalCall('apiMemberSetDayOff', [S.dayDate, draft('d:off')], '練習休みにしました', { keep: true, clear: 'd:off' }); },
-    clearDayOff: function () { memberCalCall('apiMemberClearDayOff', [S.dayDate], '練習休みを解除しました', { keep: true }); },
-    addBlock: function () {
-      var gyms = S.admin.calendar.gyms;
-      memberCalCall('apiMemberAddBlock', [S.dayDate, draft('d:blockGym', gyms[0] && gyms[0].id), draft('d:blockReason', REASONS[0]), draft('d:blockNote')],
-        '使用不可を登録しました', { keep: true, clear: 'd:blockNote' });
+    evDate: function (v) {
+      var f = S.cal.form;
+      if (S.cal.sheet === 'edit') f.dates = [v];
+      else if (f.dates.indexOf(v) >= 0) f.dates = f.dates.filter(function (x) { return x !== v; });
+      else { f.dates.push(v); f.dates.sort(); }
+      render();
     },
-    removeBlock: function (v) { memberCalCall('apiMemberRemoveBlock', [S.dayDate, v], '取り消しました', { keep: true }); },
-    setHours: function () {
-      var gyms = S.admin.calendar.gyms;
-      memberCalCall('apiMemberSetDayHours', [S.dayDate, draft('d:hoursGym', gyms[0] && gyms[0].id), draft('d:start'), draft('d:end')],
-        '時間を変更しました', { keep: true, clear: 'd:start' });
+    saveEvent: function () {
+      var f = S.cal.form;
+      if (calCannotSave(f)) return;
+      var n = calTargetDates(f).length, isEdit = !!f.id;
+      call('apiMemberSaveEvent', [S.me, f], function (r) {
+        calApply(r, isEdit ? '予定を修正しました' : n + '件の予定を登録しました', function () {
+          var first = calTargetDates(f)[0];
+          if (first) { var dd = calParse(first); S.cal.ym = [dd.getFullYear(), dd.getMonth()]; S.cal.sel = first; }
+          S.cal.sheet = null; S.cal.form = null;
+        });
+      });
     },
-    clearHours: function (v) { memberCalCall('apiMemberClearDayHours', [S.dayDate, v], '取り消しました', { keep: true }); },
+    askDeleteEvent: function () { S.cal.deleteId = S.cal.form.id; S.cal.confirmDel = true; render(); },
+    cancelDeleteEvent: function () { S.cal.confirmDel = false; S.cal.deleteId = null; render(); },
+    doDeleteEvent: function () {
+      call('apiMemberDeleteEvent', [S.me, S.cal.deleteId], function (r) {
+        calApply(r, '予定を削除しました', function () { S.cal.confirmDel = false; S.cal.deleteId = null; S.cal.sheet = null; S.cal.form = null; });
+      });
+    },
 
     // チーム管理
     pickTeam: function (v) {
@@ -1043,11 +1187,25 @@
   document.addEventListener('input', function (event) {
     var key = event.target.getAttribute('data-draft');
     if (key) S.drafts[key] = event.target.value;
+    // カレンダーのメモは再描画せず値だけ保持し、登録ボタンの有効/無効だけ更新する
+    var ef = event.target.getAttribute('data-evfield');
+    if (ef === 'memo' && S.cal.form) {
+      S.cal.form.memo = event.target.value;
+      var save = document.querySelector('[data-a="saveEvent"]');
+      if (save) save.disabled = calCannotSave(S.cal.form);
+    }
   });
   // 個人コメントは入力欄から離れたときに保存する
   document.addEventListener('change', function (event) {
     var date = event.target.getAttribute('data-note');
     if (date) saveNote(date, event.target.value.trim());
+    // カレンダーの予定フォーム(セレクト・日付)は変更時に再描画する
+    var ef = event.target.getAttribute('data-evfield');
+    if (ef && S.cal.form) {
+      S.cal.form[ef] = event.target.value;
+      if (ef === 'date' && S.cal.form.type !== 'other') S.cal.form.dates = calIsSun(event.target.value) ? [event.target.value] : S.cal.form.dates;
+      if (ef !== 'memo') render();
+    }
   });
   window.addEventListener('resize', fitHero);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitHero);
