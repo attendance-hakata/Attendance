@@ -594,7 +594,7 @@
   function viewDialog(member, team) {
     if (S.dialog === 'user') {
       return '<div class="scrim" data-a="closeDialog"><div class="sheet sheet-user" data-a="noop"><h3>' + esc(member.name) + 'さん / ' + esc(team.name) + '</h3>' +
-        '<p>この端末に名前を記憶しています。</p><button class="ghost strong" data-a="changeUser">名前を選び直す</button></div></div>';
+        '<p>この端末にログイン状態を保存しています。</p><button class="ghost strong" data-a="changeUser">ログインを変更する</button></div></div>';
     }
     if (S.dialog === 'code') return viewPass();
     if (S.dialog === 'deleteComment') return viewConfirmSheet('このコメントを削除しますか?', '削除すると元に戻せません。', 'deleteComment', '削除する');
@@ -791,7 +791,7 @@
       S.screen = 'home';
       store.set(KEY.me, v);
       render();
-      toast(me().name + 'さんとして記憶しました');
+      toast(me().name + 'さんで、ログインしました');
     },
     tab: function (v) {
       if (v === 'admin') { actions.goAdmin(); return; }
