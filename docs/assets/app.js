@@ -342,7 +342,7 @@
     var b = S.boot;
     var view = b.allocation;
     var who = auth();
-    var tag = view.state === 'confirmed' ? ['confirmed', '確定済み'] : view.adjusted ? ['adjusting', '調整中'] : ['', '自動の草案'];
+    var tag = view.state === 'confirmed' ? ['confirmed', '確定済み'] : view.adjusted ? ['adjusting', '調整中'] : ['', '割振（自動）'];
     var head = '<div class="alloc-head"><div><div class="label">' + dateLabel(view.date) + ' SUN</div>' +
       '<div class="title-sm">割り振り<span class="acc">.</span></div></div>' + (view.dayOff ? '' : '<span class="tag ' + tag[0] + '">' + tag[1] + '</span>') + '</div>';
     if (view.dayOff) {
@@ -383,7 +383,7 @@
       ? (b.lineEnabled ? '修正してLINEに再投稿' : '修正を確定する')
       : (b.lineEnabled ? '確定してLINEに投稿' : '確定する');
     html += '<div class="alloc-actions"><button class="primary" data-a="openConfirm">' + main + '<span>→</span></button>' +
-      (view.state === 'confirmed' ? '' : '<button class="link reset" data-a="resetDraft">自動の草案に戻す</button>') + '</div>';
+      (view.state === 'confirmed' ? '' : '<button class="link reset" data-a="resetDraft">自動の割振に戻す</button>') + '</div>';
     return html;
   }
 
@@ -419,7 +419,7 @@
   function calAssignFor(date) {
     var a = S.boot.allocation;
     if (date === S.boot.next && a && !a.dayOff) {
-      var status = a.state === 'confirmed' ? '確定済み' : a.adjusted ? '調整中' : '草案（未確定）';
+      var status = a.state === 'confirmed' ? '確定済み' : a.adjusted ? '調整中' : '未確定';
       return { status: status, rows: (a.gyms || []).map(function (g) { return { gym: g.name, teams: g.teams.map(function (t) { return t.name; }).join('、') }; }) };
     }
     return null;
@@ -482,7 +482,7 @@
       list += '<div class="casg"><div class="chd"><span class="ct">割振</span><span class="cs">' + esc(a2.status) + '</span><span class="cr">割振は管理画面で決定・ここでは閲覧のみ</span></div>'
         + (a2.rows.length ? a2.rows.map(function (r) { return '<div class="cln"><b>' + esc(r.gym) + '</b><span>' + esc(r.teams) + '</span></div>'; }).join('') : '<div class="cln">割当なし</div>') + '</div>';
     } else if (c.filters.assign && calIsSun(c.sel) && c.sel > S.boot.next) {
-      list += '<div class="cyet"><b>割振</b>　未作成（金曜夕方に草案を作成）</div>';
+      list += '<div class="cyet"><b>割振</b>　未作成（金曜夕方に割振を作成）</div>';
     }
     calEvents().filter(function (e) { return e.date === c.sel && c.filters[e.type]; }).forEach(function (e) {
       var ds = calDescribe(e), col = CAL_TYPES[e.type].color;
@@ -1052,7 +1052,7 @@
       S.dialog = null;
       render();
     },
-    resetDraft: function () { adminCall('apiResetDraft', [S.boot.next], '自動の草案に戻しました'); },
+    resetDraft: function () { adminCall('apiResetDraft', [S.boot.next], '自動の割振に戻しました'); },
     closeWeek: function () { adminCall('apiCloseWeek', [S.boot.next], '回答を締め切りました'); },
     reopenWeek: function () { adminCall('apiReopenWeek', [S.boot.next], '回答の受付を再開しました'); },
     unconfirm: function () { adminCall('apiUnconfirm', [S.boot.next], '確定を解除しました'); },
