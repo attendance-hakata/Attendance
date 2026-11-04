@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -7,14 +7,19 @@
 <link rel="icon" href="assets/favicon.png">
 <link rel="apple-touch-icon" href="assets/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&display=swap">
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-<div class="app" id="app"></div>
-
+<div class="bg-glow"></div>
+<div class="bg-net"></div>
+<div id="busy" class="busy" hidden></div>
+<div id="app" class="app">
+  <div class="splash">読み込み中…</div>
+</div>
+<div id="overlay"></div>
+<div id="toast"></div>
 <script src="config.js"></script>
-<script src="assets/api.js"></script>
 <script src="assets/app.js"></script>
 </body>
 </html>

@@ -1,653 +1,1062 @@
-/* =====================================================================
-   データ（getBootstrap の実データを入れる。サンプルは持たない）
-   ===================================================================== */
-var UNIT = 5;                     // 5人で1チーム換算
-var TODAY = '', DATE = '';        // アプリを開いた日 / 今週の練習日
-var MIN_YM = [2026, 0];           // 今月（これより前には戻れない）
-var DUTY_NAME = '';               // 今週の担当（担当表の人）
-var GYMS = [];                    // [{id,name,short}]
-var TEAMS = [];                   // [{id,name,home,n,members:[{id,name}]}]
-var ATT = {};                     // 出欠 {date:{memberId:'yes'|'no'|'maybe'}}
-var DATES = [];                   // 出欠の対象日（直近の日曜）
-var TYPES = {                     // 表示ラベル・色（UI定数）
-  assign: { label: '割振',       color: '#C6F14A' },
-  closed: { label: '使用不可',   color: '#FF9A3C' },
-  rest:   { label: 'チーム休み', color: '#6CB4FF' },
-  other:  { label: 'その他',     color: '#D4D4D4' }
-};
-var REASONS = {                   // UI定数
-  closed: ['学校行事', '地域行事', '選挙・公共行事', 'その他'],
-  rest:   ['チームの都合', '大会・遠征', 'その他']
-};
+// 画面側の処理。1ページ内で画面を切り替える(SPA)
+// メンバー画面: home / answer、管理画面: alloc / calendar / contacts / team
+(function () {
+  'use strict';
 
-function gymShort_(name){ return String(name || '').replace(/小学校$/, '小'); }
+  var KEY = { me: 'attendance.me', auth: 'attendance.auth', boot: 'attendance.boot' };
+  var LABEL = { yes: '参加', no: '不参加', maybe: '未定' };
+  var REASONS = ['学校行事', '地域行事', 'チームの都合', 'その他'];
+  var ADMIN_SCREENS = { alloc: 1, calendar: 1, contacts: 1, team: 1, power: 1 };
 
-// getBootstrap の結果（boot）からアプリ用データを作る
-function buildData(boot){
-  TODAY = boot.today;
-  DATE = boot.next;
-  DATES = boot.dates || [DATE];
-  var td = parse(TODAY); MIN_YM = [td.getFullYear(), td.getMonth()];
-  DUTY_NAME = boot.dutyName || '';
-  ATT = boot.attendance || {};
-  var al = boot.allocation || {};
-  // 体育館（使える体育館＋使用不可の体育館）
-  var gyms = (al.gyms || []).slice();
-  var closedList = al.closed ? (Array.isArray(al.closed) ? al.closed : [al.closed]) : [];
-  closedList.forEach(function(c){ if (c && c.id && !gyms.some(function(g){ return g.id === c.id; })) gyms.push({ id: c.id, name: c.name }); });
-  GYMS = gyms.map(function(g){ return { id: g.id, name: g.name, short: gymShort_(g.name) }; });
-  // チーム（＋メンバー、＋今週の参加人数＝出欠が参加の人数）
-  var attNext = ATT[DATE] || {};
-  TEAMS = (boot.teams || []).map(function(t){
-    var mem = (boot.members || []).filter(function(m){ return m.teamId === t.id; }).map(function(m){ return { id: m.id, name: m.name }; });
-    var n = mem.filter(function(m){ return attNext[m.id] === 'yes'; }).length;
-    return { id: t.id, name: t.name, home: t.homeGymId || '', n: n, members: mem };
-  });
-  // 今週の割振・使用不可・練習休みを state へ
-  state.asg.assign = al.alloc || {};
-  state.asg.decided = !!(al.state && al.state !== 'open');
-  state.asg.gym = GYMS.length ? GYMS[0].id : '';
-  state.events = [];
-  closedList.forEach(function(c, i){ if (c && c.id) state.events.push({ id: 'c' + i, type: 'closed', date: DATE, gym: c.id, reason: '', memo: c.reason || '', by: '' }); });
-  var dayOffs = boot.dayOffs || {};
-  Object.keys(dayOffs).forEach(function(d, i){ state.events.push({ id: 'o' + i, type: 'other', date: d, reason: '', memo: '練習休み' + (dayOffs[d] ? '：' + dayOffs[d] : ''), by: '' }); });
-  state.cal.ym = MIN_YM.slice();
-  state.cal.sel = DATE;
-}
-
-var state = {
-  tab: 'home',
-  me: null,                                   // 選択中のチームID（自分のチーム）
-  member: null,                               // 選択中のメンバー名（誰で操作するか）
-  memberId: null,                             // 選択中のメンバーID
-  admin: false,                               // 管理画面のロック解除
-  pick: { team: null },                       // 入口：チーム選択の途中状態
-  gate: { code: '', err: '' },                // 管理パスワードの入力
-  events: [],                                 // 予定（使用不可・練習休み等。buildData で実データを入れる）
-  nextId: 1,
-  cal: { ym: [2026, 0], sel: '', filters: { assign: true, closed: true, rest: true, other: true }, sheet: null, form: null, confirmDel: false, toast: '' },
-  asg: { screen: 'pick', gym: '', pending: null, decided: false, posted: false, copied: false, assign: {} }
-};
-
-/* =====================================================================
-   ヘルパー
-   ===================================================================== */
-function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-function pad(n){ return (n < 10 ? '0' : '') + n; }
-function iso(d){ return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
-function parse(t){ var p = t.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
-function md(t){ var d = parse(t); return (d.getMonth() + 1) + '/' + d.getDate(); }
-var WD = ['日','月','火','水','木','金','土'];
-function isSun(t){ return parse(t).getDay() === 0; }
-function team(id){ return TEAMS.find(function(t){ return t.id === id; }); }
-function gym(id){ return GYMS.find(function(g){ return g.id === id; }); }
-function tname(id){ var t = team(id); return t ? t.name : ''; }
-function gname(id){ var g = gym(id); return g ? g.name : ''; }
-function homeOf(teamId){ var t = team(teamId); return t && t.home ? t.home : ''; }
-function homeTeamOf(gymId){ return TEAMS.find(function(t){ return t.home === gymId; }); }
-
-/* カレンダーの予定から、その日の使用不可・休みを引く */
-function closedOn(date, gymId){ return state.events.find(function(e){ return e.type === 'closed' && e.date === date && e.gym === gymId; }); }
-function restOn(date, teamId){ return state.events.find(function(e){ return e.type === 'rest' && e.date === date && e.team === teamId; }); }
-
-/* 割振（今週分） */
-function countOf(t){ return restOn(DATE, t.id) ? 0 : t.n; }
-function total(gymId){ return TEAMS.filter(function(t){ return state.asg.assign[t.id] === gymId; }).reduce(function(a, t){ return a + countOf(t); }, 0); }
-function openGyms(){ return GYMS.filter(function(g){ return !closedOn(DATE, g.id); }); }
-function unassigned(){
-  return TEAMS.filter(function(t){
-    if (countOf(t) === 0) return false;
-    var a = state.asg.assign[t.id];
-    return !a || !!closedOn(DATE, a);
-  });
-}
-/* カレンダーに出す割振（過去の確定分＋今週の草案／確定） */
-function assignFor(date){
-  if (date !== DATE) return null;
-  var rows = openGyms().map(function(g){
-    var ts = TEAMS.filter(function(t){ return state.asg.assign[t.id] === g.id && countOf(t) > 0; });
-    return ts.length ? { gym: g.name, teams: ts.map(function(t){ return t.name; }).join('、') } : null;
-  }).filter(Boolean);
-  return { status: state.asg.decided ? '確定済み' : '草案（未確定）', rows: rows };
-}
-
-function set(p){ Object.assign(state, p); render(); }
-function setCal(p){ Object.assign(state.cal, p); render(); }
-function setAsg(p){ Object.assign(state.asg, p); render(); }
-
-/* =====================================================================
-   共通パーツ
-   ===================================================================== */
-function header(){
-  var who = state.me
-    ? '<button class="who" data-act="switchIdent" aria-label="チーム・担当を切り替える"><span class="dot"></span>' + esc(tname(state.me)) + ' / ' + esc(state.member) + '</button>'
-    : '';
-  return '<div class="hdr"><img class="logo-img" src="assets/logo.png" alt="Attendance.">' + who + '</div>';
-}
-function tabbar(){
-  var ic = {
-    home:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>',
-    att:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h12M4 10h12M4 15h7"/><path d="m15.5 18 2.2 2.2L22 15.6"/></svg>',
-    cal:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
-    admin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5 5l2.1 2.1M16.9 16.9 19 19M19 5l-2.1 2.1M7.1 16.9 5 19"/></svg>'
+  // localStorage は使えない環境があるため必ず例外を吸収する
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) { /* 記憶できなくても動作は続ける */ } },
+    del: function (k) { try { localStorage.removeItem(k); } catch (e) { /* 同上 */ } }
   };
-  function t(v, label){
-    var on = v === 'admin' ? (state.tab === 'admin' || state.tab === 'asg') : state.tab === v;
-    return '<button class="tab' + (on ? ' on' : '') + '" data-act="tab" data-v="' + v + '" aria-current="' + on + '">' + ic[v] + label + '</button>';
-  }
-  return '<nav class="tabbar" aria-label="画面の切り替え">'
-    + t('home', 'ホーム') + t('att', '出欠') + t('cal', 'カレンダー') + t('admin', '管理') + '</nav>';
-}
 
-/* =====================================================================
-   ホーム・出欠・管理（枠。中身はモックアップ／サンプル。実装時に API へ）
-   ===================================================================== */
-function viewHome(){
-  var h = '<div class="pad">';
-  h += '<div class="hero"><div class="label">今週の練習日</div><div class="big en">' + md(DATE)
-    + ' <span style="font-size:14px;font-family:\'Noto Sans JP\',sans-serif">（' + WD[parse(DATE).getDay()] + '）</span></div></div>';
-  if (state.me) {
-    var t = team(state.me), g = state.asg.assign[state.me], rest = restOn(DATE, state.me);
-    var where = rest ? '休み' : (g && !closedOn(DATE, g) ? gname(g) : '未定');
-    h += '<div class="card">'
-      + '<div class="kv"><span>あなた</span><span class="v">' + esc(state.member) + '</span></div>'
-      + '<div class="kv"><span>自チーム</span><span class="v">' + esc(t.name) + '</span></div>'
-      + '<div class="kv"><span>割振先の体育館</span><span class="v">' + esc(where) + '</span></div>'
-      + '<div class="kv"><span>今週の参加人数</span><span class="v">' + countOf(t) + ' 人</span></div>'
-      + '</div>';
-    var am = ATT[DATE] || {}, mem = t.members || [];
-    var yes = mem.filter(function(m){ return am[m.id] === 'yes'; }).length;
-    var no = mem.filter(function(m){ return am[m.id] === 'no'; }).length;
-    var un = mem.length - mem.filter(function(m){ return am[m.id]; }).length;
-    h += '<div class="label">自チームの出欠（' + mem.length + '名）</div>'
-      + '<div class="grid3">'
-      + '<div class="box"><div class="label">参加</div><div class="big en">' + yes + '</div></div>'
-      + '<div class="box"><div class="label">不参加</div><div class="big en">' + no + '</div></div>'
-      + '<div class="box"><div class="label">未回答</div><div class="big en">' + un + '</div></div>'
-      + '</div>'
-      + '<button class="link" data-act="tab" data-v="att">出欠を見る →</button>';
-  }
-  var a = assignFor(DATE);
-  if (a) {
-    h += '<div class="label">今週の割振（' + a.status + '）</div><div class="card">';
-    if (a.rows.length) a.rows.forEach(function(r){
-      h += '<div class="kv"><span>' + esc(r.gym) + '</span><span class="v" style="font-weight:500;color:var(--sub)">' + esc(r.teams) + '</span></div>';
+  var S = {
+    boot: null,
+    me: store.get(KEY.me),
+    screen: 'home',
+    obTeam: null,
+    sumIndex: 0,
+    sumOpen: false,
+    composerOpen: false,
+    noteOpen: {},      // 出欠画面で開いているコメント欄(日付ごと)
+    dialog: null,      // 'user' | 'code' | 'move' | 'confirm' | 'deleteComment' | 'day' | 'removeMember'
+    moveTeam: null,
+    deleteId: null,
+    dayDate: null,
+    removeMemberId: null,
+    drafts: {},        // 入力途中の文字列。再描画しても消えないよう保持する
+    passLength: 4,
+    code: '',
+    codeMsg: '',
+    codeErr: false,
+    loggingIn: false,
+    pendingWrites: 0,
+    error: null,
+    revealPass: {},    // 管理者ページで番号を表示しているチーム
+    // 管理画面のデータ。連絡先やパスを含むので端末には保存しない
+    admin: { calendar: null, contacts: null, team: null, teamList: null, teamId: null, power: null }
+  };
+
+  // ---- 共通処理 ----
+  function esc(value) {
+    return String(value === null || value === undefined ? '' : value).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
-    else h += '<div class="st">まだ割振がありません</div>';
-    h += '</div><button class="link" data-act="tab" data-v="cal">カレンダーで見る →</button>';
   }
-  return h + '</div>';
-}
-function viewAtt(){
-  var html = '<div class="pad"><div class="hero"><div class="label">出欠</div><div class="big">あなたの出欠</div></div>';
-  html += '<div class="card">';
-  (DATES.length ? DATES : [DATE]).forEach(function(d){
-    var st = (ATT[d] || {})[state.memberId];
-    var lbl = st === 'yes' ? '参加' : st === 'no' ? '不参加' : st === 'maybe' ? '未定' : '未回答';
-    var cls = st === 'yes' ? 'lime' : st === 'no' ? 'warn' : st === 'maybe' ? 'blue' : '';
-    html += '<div class="kv"><span>' + md(d) + '（' + WD[parse(d).getDay()] + '）</span><span class="v"><span class="st ' + cls + '" style="font-size:14px">' + lbl + '</span></span></div>';
-  });
-  html += '</div><div class="hint">出欠を変更する機能は、この後の工程で追加します。</div></div>';
-  return html;
-}
-function viewAdmin(){
-  function mi(title, sub, attr, cv){
-    return '<button class="mi" ' + attr + '><span><b>' + title + '</b><span class="sub">' + sub + '</span></span><span class="cv">' + cv + '</span></button>';
+
+  function dateLabel(date) {
+    var p = date.split('-');
+    return Number(p[1]) + '/' + Number(p[2]);
   }
-  return '<div class="pad"><div class="hero"><div class="label">管理画面</div><div class="big">管理メニュー</div></div><div class="menu">'
-    + mi('割振', '今週の体育館割当（幹事）', 'data-act="tab" data-v="asg"', '›')
-    + mi('連絡先', 'チームの連絡先を確認', 'disabled', '準備中')
-    + mi('チーム管理', 'メンバー・連絡先の編集', 'disabled', '準備中')
-    + mi('管理者', 'パスワード・体育館・担当表', 'disabled', '準備中')
-    + '</div></div>';
-}
 
-/* =====================================================================
-   カレンダー
-   ===================================================================== */
-function describe(e){
-  if (e.type === 'closed') return { title: gname(e.gym) + '　使用不可', sub: e.reason + (e.memo ? '・' + e.memo : '') };
-  if (e.type === 'rest')   return { title: tname(e.team) + '　休み', sub: e.reason + (e.memo ? '・' + e.memo : '') };
-  return { title: e.memo || 'その他の予定', sub: '' };
-}
-function viewCal(){
-  var c = state.cal, y = c.ym[0], m = c.ym[1];
-  var atMin = y < MIN_YM[0] || (y === MIN_YM[0] && m <= MIN_YM[1]);
-  var offset = new Date(y, m, 1).getDay();
-  var weeks = Math.ceil((offset + new Date(y, m + 1, 0).getDate()) / 7);
+  function mapUrl(gym) {
+    return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(gym.address || gym.name);
+  }
 
-  var cells = '';
-  for (var i = 0; i < weeks * 7; i++) {
-    var d = new Date(y, m, 1 - offset + i), t = iso(d), bars = '', cnt = 0;
-    var a = c.filters.assign && assignFor(t);
-    if (a) { bars += '<i style="background:#C6F14A' + (a.status === '確定済み' ? '' : ';opacity:.5') + '"></i>'; cnt++; }
-    state.events.forEach(function(e){
-      if (e.date === t && c.filters[e.type] && cnt < 4) { bars += '<i style="background:' + TYPES[e.type].color + '"></i>'; cnt++; }
+  function timeText(item) {
+    return item && item.start ? item.start + '〜' + item.end : '';
+  }
+
+  function setBusy(delta) {
+    S.pendingWrites += delta;
+    document.getElementById('busy').hidden = S.pendingWrites <= 0;
+  }
+
+  // サーバーの api* を fetch で呼ぶ。通信エラーも応答エラーと同じ形で返す
+  // GitHub Pages から GAS を呼ぶため、プリフライトを避けて text/plain で送る。独自ヘッダー・Cookie は付けない
+  function call(name, args, done) {
+    setBusy(1);
+    fetch(window.API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: name, args: args || [] }),
+      redirect: 'follow'
+    }).then(function (res) {
+      return res.json();
+    }).then(function (json) {
+      setBusy(-1);
+      // サーバーは { ok:true, data } / { ok:false, error:{code,message} } を返す。
+      // 画面側の既存ロジックに合わせ、data を平らにした { ok, ... } の形へ戻す
+      if (json && json.ok) {
+        var flat = json.data || {};
+        flat.ok = true;
+        done(flat);
+      } else {
+        var err = json && json.error;
+        done({ ok: false, code: (err && err.code) || 'SERVER', message: (err && err.message) || '応答がありません。' });
+      }
+    }).catch(function () {
+      setBusy(-1);
+      done({ ok: false, code: 'NETWORK', message: '通信できませんでした。もう一度お試しください。' });
     });
-    var cls = 'day' + (d.getMonth() !== m ? ' out' : '') + (d.getDay() === 0 && d.getMonth() === m ? ' sun' : '') + (t === TODAY ? ' today' : '') + (t === c.sel ? ' sel' : '');
-    cells += '<button class="' + cls + '" data-act="calPick" data-date="' + t + '" aria-pressed="' + (t === c.sel) + '" aria-label="' + (d.getMonth() + 1) + '月' + d.getDate() + '日（' + WD[d.getDay()] + '）' + (cnt ? '　予定' + cnt + '件' : '') + '">'
-      + '<span class="n">' + d.getDate() + '</span><span class="bars">' + bars + '</span></button>';
   }
 
-  var chips = ['assign','closed','rest','other'].map(function(k){
-    var on = c.filters[k];
-    return '<button class="chip' + (on ? '' : ' off') + '" data-act="calFilter" data-v="' + k + '" aria-pressed="' + on + '"><i style="background:' + TYPES[k].color + '"></i>' + TYPES[k].label + '</button>';
-  }).join('');
-
-  var sd = parse(c.sel), list = '';
-  var a2 = c.filters.assign && assignFor(c.sel);
-  if (a2) {
-    list += '<section class="asg"><div class="hd"><span class="t">割振</span><span class="s">' + a2.status + '</span><span class="r">割振画面で決定・ここでは編集不可</span></div>'
-      + (a2.rows.length ? a2.rows.map(function(r){ return '<div class="ln"><b>' + esc(r.gym) + '</b><span class="en">' + esc(r.teams) + '</span></div>'; }).join('') : '<div class="ln">割当なし</div>')
-      + (c.sel === DATE ? '<button class="link" data-act="tab" data-v="asg">割振画面を開く →</button>' : '') + '</section>';
-  } else if (c.filters.assign && isSun(c.sel) && c.sel >= TODAY) {
-    list += '<div class="yet"><b style="color:var(--lime)">割振</b>　未作成（金曜夕方に草案を作成）</div>';
+  var toastTimer = null;
+  function toast(text) {
+    var root = document.getElementById('toast');
+    root.innerHTML = '<div class="toast">' + esc(text) + '</div>';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { root.innerHTML = ''; }, 2000);
   }
-  var evs = state.events.filter(function(e){ return e.date === c.sel && c.filters[e.type]; });
-  evs.forEach(function(e){
-    var ds = describe(e), col = TYPES[e.type].color;
-    list += '<section class="ev"><div class="body"><span class="tag" style="border-color:' + col + ';color:' + col + '">' + TYPES[e.type].label + '</span>'
-      + '<span class="ttl">' + esc(ds.title) + '</span>' + (ds.sub ? '<span class="sb">' + esc(ds.sub) + '</span>' : '')
-      + '<span class="by">登録：' + (e.by && tname(e.by) ? esc(tname(e.by)) + ' 代表' : '管理者') + '</span></div>'
-      + '<button class="edit" data-act="calEdit" data-id="' + e.id + '" aria-label="' + esc(ds.title) + 'を編集">編集</button></section>';
-  });
-  if (!list) list = '<div class="empty">この日の予定はありません</div>';
 
-  return '<div class="pad">'
-    + '<div class="monthrow"><h1>' + y + '年' + (m + 1) + '月</h1><div class="navs">'
-    + '<button class="arrow" data-act="calPrev" aria-label="前の月"' + (atMin ? ' disabled' : '') + '>‹</button>'
-    + '<button data-act="calThis">今月</button>'
-    + '<button class="arrow" data-act="calNext" aria-label="次の月">›</button></div></div>'
-    + '<div class="filters">' + chips + '</div>'
-    + (c.toast ? '<div class="toast" role="status">' + esc(c.toast) + '</div>' : '')
-    + '<div class="wk"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div>'
-    + '<div class="grid">' + cells + '</div>'
-    + '<div class="dayhd"><b>' + (sd.getMonth() + 1) + '月' + sd.getDate() + '日（' + WD[sd.getDay()] + '）</b><span class="label">' + (isSun(c.sel) ? '練習日' : '') + '</span></div>'
-    + list
-    + '<div style="height:72px"></div></div>'
-    + '<button class="fab" data-act="calNew"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="#0D0D0D" stroke-width="2.4" stroke-linecap="round"/></svg>予定を登録</button>';
-}
-
-/* 登録・修正シート */
-function upcomingSundays(){
-  var out = [], d = parse(TODAY);
-  d.setDate(d.getDate() + ((7 - d.getDay()) % 7));
-  for (var k = 0; k < 8; k++) { out.push(iso(d)); d.setDate(d.getDate() + 7); }
-  return out;
-}
-function targetDates(f){ return f.type === 'other' ? (f.date ? [f.date] : []) : f.dates; }
-function cannotSave(f){ return !targetDates(f).length || (f.type === 'other' && !f.memo.trim()) || (f.type === 'closed' && !f.gym); }
-function sheetWarn(f){
-  if (f.type === 'other') return '';
-  var ds = targetDates(f), conf = [], draft = [];
-  ds.forEach(function(d){ var a = assignFor(d); if (a) (a.status === '確定済み' ? conf : draft).push(md(d)); });
-  if (conf.length) return conf.join('、') + 'は割振が確定済みです。保存すると今週の担当に見直しを依頼します。';
-  if (draft.length) return draft.join('、') + 'は割振の草案があります。保存すると草案に反映されます。';
-  return '';
-}
-function viewSheet(){
-  var c = state.cal, f = c.form, isEdit = c.sheet === 'edit';
-  var types = ['closed','rest','other'].map(function(k){
-    var on = f.type === k, col = TYPES[k].color;
-    return '<button data-act="fType" data-v="' + k + '" aria-pressed="' + on + '" style="' + (on ? 'background:#1E1E1E;border:1.5px solid ' + col + ';color:' + col : '') + '">' + TYPES[k].label + '</button>';
-  }).join('');
-
-  var suns = upcomingSundays();
-  f.dates.forEach(function(d){ if (suns.indexOf(d) < 0) suns.unshift(d); });
-  var dateField = f.type === 'other'
-    ? '<label class="fld">日付<input type="date" data-field="date" value="' + esc(f.date) + '" min="' + TODAY + '"></label>'
-    : '<div><div class="label" style="margin-bottom:6px">' + (isEdit ? '日付（日曜）' : '日付（日曜・複数選べます）') + '</div><div class="suns">'
-      + suns.map(function(d){ var on = f.dates.indexOf(d) >= 0; return '<button class="' + (on ? 'on' : '') + '" data-act="fDate" data-date="' + d + '" aria-pressed="' + on + '">' + md(d) + '</button>'; }).join('')
-      + '</div></div>';
-
-  var myHome = homeOf(state.me);
-  var gymField = '';
-  if (f.type === 'closed') {
-    var gh = !f.gym ? ['体育館を選んでください', 'warn']
-      : f.gym === myHome ? ['ログイン中のチーム（' + tname(state.me) + '）のホームを初期表示しています', '']
-      : ['他チームの体育館を代わりに登録します', 'warn'];
-    gymField = '<label class="fld">体育館<select data-field="gym">'
-      + (myHome ? '' : '<option value="">選択してください</option>')
-      + GYMS.map(function(g){ return '<option value="' + g.id + '"' + (g.id === f.gym ? ' selected' : '') + '>' + g.name + '</option>'; }).join('')
-      + '</select><span class="hint ' + gh[1] + '">' + gh[0] + '</span></label>';
+  // 入力済みのパスの権限。期限切れなら null
+  function auth() {
+    try {
+      var value = JSON.parse(store.get(KEY.auth) || 'null');
+      return value && value.expires > Date.now() ? value : null;
+    } catch (e) {
+      return null;
+    }
   }
-  var teamField = '';
-  if (f.type === 'rest') {
-    teamField = '<label class="fld">チーム<select data-field="team">'
-      + TEAMS.map(function(t){ return '<option value="' + t.id + '"' + (t.id === f.team ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('')
-      + '</select><span class="hint ' + (f.team === state.me ? '' : 'warn') + '">' + (f.team === state.me ? 'ログイン中のチームを初期表示しています' : '他チームの休みを代わりに登録します') + '</span></label>';
+
+  function token() {
+    var value = auth();
+    return value ? value.token : null;
   }
-  var reasonField = f.type === 'other' ? '' : '<label class="fld">理由<select data-field="reason">'
-    + REASONS[f.type].map(function(r){ return '<option' + (r === f.reason ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select></label>';
-  var memoPh = f.type === 'closed' ? '例：運動会' : f.type === 'rest' ? '例：大会参加のため' : '例：代表者ミーティング';
-  var memoField = '<label class="fld">' + (f.type === 'other' ? '内容' : 'メモ（任意）') + '<input type="text" data-field="memo" value="' + esc(f.memo) + '" placeholder="' + memoPh + '"></label>';
-  var byField = '<label class="fld">登録者<select data-field="by">'
-    + TEAMS.map(function(t){ return '<option value="' + t.id + '"' + (t.id === f.by ? ' selected' : '') + '>' + esc(t.name) + ' 代表</option>'; }).join('')
-    + '</select></label>';
-  var w = sheetWarn(f);
-  var n = targetDates(f).length;
-  return '<div class="overlay bottom" data-act="closeSheet" data-self="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="' + (isEdit ? '予定を修正' : '予定を登録') + '">'
-    + '<span class="grab"></span><div class="shd"><b>' + (isEdit ? '予定を修正' : '予定を登録') + '</b><button class="x" data-act="closeSheet" aria-label="閉じる">×</button></div>'
-    + '<div><div class="label" style="margin-bottom:6px">種類</div><div class="seg3">' + types + '</div></div>'
-    + dateField + gymField + teamField + reasonField + memoField + byField
-    + (w ? '<div class="wbox">' + esc(w) + '</div>' : '')
-    + '<div class="row2">' + (isEdit ? '<button class="btn danger" data-act="askDelete">削除</button>' : '')
-    + '<button class="btn primary" style="flex:2" data-act="saveEvent" id="saveBtn"' + (cannotSave(f) ? ' disabled' : '') + '>' + (isEdit ? '修正を保存' : (n > 1 ? n + '件を登録' : '登録')) + '</button></div>'
-    + '</div></div>';
-}
-function viewDelete(){
-  var f = state.cal.form, e = state.events.find(function(x){ return x.id === f.id; });
-  if (!e) return '';
-  var ds = describe(e), a = assignFor(e.date);
-  return '<div class="overlay center"><div class="dialog" role="alertdialog" aria-modal="true" aria-label="予定の削除">'
-    + '<div class="q">この予定を削除しますか？</div>'
-    + '<div class="boxed">' + md(e.date) + '　' + esc(ds.title) + (ds.sub ? '（' + esc(ds.sub) + '）' : '') + '</div>'
-    + (a && e.type !== 'other' ? '<div class="hint warn" style="font-size:12px">この日は割振があります。削除すると、割振の見直しが必要になる場合があります。</div>' : '')
-    + '<div class="row2"><button class="btn ghost" data-act="cancelDelete">キャンセル</button><button class="btn danger-fill" data-act="doDelete">削除する</button></div>'
-    + '</div></div>';
-}
 
-/* =====================================================================
-   割振
-   ===================================================================== */
-function viewAsgPick(){
-  var s = state.asg, canEdit = state.admin;
-  var cur = gym(s.gym), curTotal = total(s.gym), ht = homeTeamOf(s.gym);
-
-  var gymsHtml = GYMS.map(function(g){
-    var cl = closedOn(DATE, g.id), on = g.id === s.gym;
-    var sub = cl ? '使用不可・' + (cl.memo || cl.reason) : total(g.id) + '人';
-    return '<button class="gym' + (on ? ' on' : '') + '" data-act="asgGym" data-v="' + g.id + '"' + (cl ? ' disabled' : '') + ' aria-pressed="' + on + '"><b>' + esc(g.short) + '</b><span>' + esc(sub) + '</span></button>';
-  }).join('');
-
-  var rows = TEAMS.map(function(t){
-    var a = s.assign[t.id], here = a === s.gym, rest = restOn(DATE, t.id), n = countOf(t);
-    var st, cls = '';
-    if (rest) { st = '休み（カレンダー登録）'; cls = 'blue'; }
-    else if (n === 0) { st = '休み（参加0人）'; }
-    else if (a && closedOn(DATE, a)) { st = '割振先が使用不可：' + gname(a); cls = 'warn'; }
-    else if (here) { st = 'この体育館に割振中'; cls = 'lime'; }
-    else if (a) { st = '割振済み：' + gname(a); }
-    else { st = '未割当'; cls = 'warn'; }
-    if (n > 0 && n < UNIT) st += '　5人未満';
-    var off = n === 0;
-    return '<button class="team' + (here && !off ? ' here' : '') + (off ? ' off' : '') + '" data-act="asgTeam" data-v="' + t.id + '"' + (off || !canEdit ? ' disabled' : '') + ' aria-pressed="' + here + '">'
-      + '<span class="bd">' + t.id + '</span>'
-      + '<span class="tinfo"><span class="tname">' + esc(t.name) + (t.home === s.gym ? '<span class="home">HOME</span>' : '') + '</span><span class="st ' + cls + '">' + esc(st) + '</span></span>'
-      + '<span class="num"><b class="' + (n > 0 && n < UNIT ? 'short' : '') + '">' + n + '</b><span>人</span></span></button>';
-  }).join('');
-
-  var un = unassigned();
-  var head = '<div class="pad">'
-    + '<div><h1>' + md(DATE) + '(' + WD[parse(DATE).getDay()] + ')の割当</h1><div class="label" style="margin-top:6px">今週の担当　' + esc(DUTY_NAME) + (s.decided ? '　・　確定済み' : '　・　草案') + '</div></div>';
-  head += '<div><div class="label" style="margin-bottom:8px">① 今週使える体育館を選ぶ</div><div class="gyms">' + gymsHtml + '</div></div>'
-    + '<div class="cur"><div><div class="nm">' + esc(cur.name) + '</div><div class="s">' + (ht ? 'ホーム：' + esc(ht.name) : 'ホームのチームなし') + '</div></div>'
-    + '<div style="text-align:right"><span class="big">' + curTotal + '</span><span style="font-size:12px">人</span><div class="s">' + Math.floor(curTotal / UNIT) + 'チーム分</div></div></div>'
-    + '<div class="label">② チームをタップして、この体育館に割り振る</div>'
-    + '<div class="teams">' + rows + '</div></div>';
-  var bar = canEdit
-    ? '<div class="bar"><div class="left ' + (un.length ? 'warn' : 'ok') + '">' + (un.length ? '未割当 ' + un.length + 'チーム' : 'すべてのチームを割り振りました') + '</div><button class="btn primary" style="flex:0 0 190px" data-act="asgConfirm">最終確認へ</button></div>'
-    : '';
-  return head + bar;
-}
-function viewMove(){
-  var s = state.asg, p = team(s.pending), from = s.assign[p.id], fromTotal = total(from), toTotal = total(s.gym), n = countOf(p);
-  var homeWarn = p.home && p.home === from;
-  return '<div class="overlay center"><div class="dialog" role="dialog" aria-modal="true" aria-label="再割振の確認">'
-    + '<div class="kicker">割振済みのチームです</div>'
-    + '<div class="q"><span class="en">' + esc(p.name) + '</span>（' + n + '人）を<br>' + esc(gname(s.gym)) + 'に移しますか？</div>'
-    + '<div class="grid2"><div class="box"><div class="k">移動元　' + esc(gname(from)) + '</div><div class="v">' + fromTotal + ' → ' + (fromTotal - n) + '<small style="font-size:11px">人</small></div></div>'
-    + '<div class="box to"><div class="k">移動先　' + esc(gname(s.gym)) + '</div><div class="v">' + toTotal + ' → ' + (toTotal + n) + '<small style="font-size:11px">人</small></div></div></div>'
-    + (homeWarn ? '<div class="hint warn" style="font-size:12px">' + esc(gname(from)) + 'は' + esc(p.name) + 'のホームです。移すと、この体育館は使えなくなる可能性があります。</div>' : '')
-    + '<div class="row2"><button class="btn ghost" data-act="cancelMove">キャンセル</button><button class="btn primary" data-act="confirmMove">移す</button></div>'
-    + '</div></div>';
-}
-function asgWarnings(){
-  var w = [];
-  unassigned().forEach(function(t){
-    var a = state.asg.assign[t.id];
-    w.push(a ? t.name + 'の割振先（' + gname(a) + '）が使用不可になりました' : t.name + '（' + countOf(t) + '人）がまだ割り振られていません');
-  });
-  openGyms().forEach(function(g){
-    var tot = total(g.id), ht = homeTeamOf(g.id);
-    if (tot > 0 && tot < UNIT) w.push(g.name + 'が' + tot + '人です（5人未満）');
-    if (tot > 0 && ht && state.asg.assign[ht.id] !== g.id) w.push(g.name + 'にホームの' + ht.name + 'がいません。借りているチームがいないと使えない可能性があります');
-  });
-  return w;
-}
-function viewAsgConfirm(){
-  var w = asgWarnings();
-  var cards = openGyms().map(function(g){
-    var ts = TEAMS.filter(function(t){ return state.asg.assign[t.id] === g.id && countOf(t) > 0; }), tot = total(g.id);
-    return '<section class="card"><div class="hd"><b>' + esc(g.name) + '</b><span><span class="en" style="font-size:24px;font-weight:800">' + tot + '</span><span style="font-size:12px">人</span><span class="label" style="margin-left:6px">' + Math.floor(tot / UNIT) + 'チーム分</span></span></div>'
-      + (ts.length ? ts.map(function(t){ var n = countOf(t); return '<div class="t"><span class="bd">' + t.id + '</span><span class="en" style="font-weight:600">' + esc(t.name) + '</span><span class="n' + (n < UNIT ? ' short' : '') + '">' + n + '人</span></div>'; }).join('') : '<div class="none">割当なし（この体育館は使いません）</div>')
-      + '</section>';
-  }).join('');
-  var closed = GYMS.filter(function(g){ return closedOn(DATE, g.id); }).map(function(g){ var e = closedOn(DATE, g.id); return '<div class="plain"><span>使用不可　' + esc(g.name) + '</span><span>' + esc(e.memo || e.reason) + '</span></div>'; }).join('');
-  var rest = TEAMS.filter(function(t){ return countOf(t) === 0; }).map(function(t){ return t.name; });
-  return '<div class="pad"><h1>最終確認</h1>'
-    + (w.length ? '<div class="warnbox">' + w.map(function(x){ return '<div><span>' + esc(x) + '</span></div>'; }).join('') + '</div>' : '')
-    + cards + closed
-    + '<div class="plain"><span>休み</span><span>' + esc(rest.length ? rest.join('、') : 'なし') + '</span></div></div>'
-    + '<div class="bar"><button class="btn ghost" style="flex:1" data-act="asgBack">戻って修正</button><button class="btn primary" style="flex:2" data-act="asgDecide">この内容で決定する</button></div>';
-}
-function lineText(){ // 実装時はGAS側で作成して返す
-  var lines = ['【11/8(日) 練習場所が決まりました】', ''];
-  openGyms().forEach(function(g){
-    var ts = TEAMS.filter(function(t){ return state.asg.assign[t.id] === g.id && countOf(t) > 0; });
-    if (!ts.length) return;
-    lines.push('●' + g.name + '（' + total(g.id) + '人）');
-    lines.push('　' + ts.map(function(t){ return t.name + ' ' + countOf(t) + '人'; }).join('／'));
-  });
-  lines.push('');
-  GYMS.forEach(function(g){ var e = closedOn(DATE, g.id); if (e) lines.push('※' + g.name + 'は' + (e.memo || e.reason) + 'のため使用不可'); });
-  var rest = TEAMS.filter(function(t){ return countOf(t) === 0; }).map(function(t){ return t.name; });
-  if (rest.length) lines.push('※休み：' + rest.join('、'));
-  lines.push('詳細はこちら → [アプリのURL]');
-  return lines.join('\n');
-}
-function viewAsgLine(){
-  var s = state.asg;
-  var note = s.copied ? '文面をコピーしました' : s.posted ? '代表者のLINEグループに投稿しました' : 'ボットが代表者のLINEグループに投稿します';
-  return '<div class="pad">'
-    + '<div class="done"><i><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7" fill="none" stroke="#0D0D0D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></i>11/8の割当を決定しました（カレンダーにも反映）</div>'
-    + '<h1>LINE通知の文面</h1>'
-    + '<div class="label">決定した内容から自動で作成しました。投稿前に確認してください。</div>'
-    + '<div class="bubble">' + esc(lineText()) + '</div>'
-    + '<div class="label">' + note + '</div></div>'
-    + '<div class="bar" style="flex-direction:column;align-items:stretch"><button class="btn primary" data-act="post"' + (s.posted ? ' disabled' : '') + '>' + (s.posted ? 'LINEグループに投稿しました' : 'LINEグループに投稿する') + '</button>'
-    + '<div class="row2"><button class="btn ghost" style="min-height:48px" data-act="copy">文面をコピー</button><button class="btn quiet" style="min-height:48px" data-act="asgBack">割当を修正</button></div></div>';
-}
-
-/* =====================================================================
-   入口・管理パスワード
-   ===================================================================== */
-/* 入口：チームを選ぶ → 誰で操作するか（メンバー）を選ぶ。認証はしない */
-function viewPickTeam(){
-  var cards = TEAMS.map(function(t){
-    return '<button class="pk" data-act="pickTeam" data-v="' + t.id + '"><span class="bd">' + t.id + '</span><span class="pkname">' + esc(t.name) + '</span><span class="cv">›</span></button>';
-  }).join('');
-  return '<div class="entry"><img class="elogo-img" src="assets/logo.png" alt="Attendance.">'
-    + '<div class="etitle">チームを選択</div>'
-    + '<div class="esub">あなたのチームを選んでください</div>'
-    + '<div class="menu">' + cards + '</div></div>';
-}
-function viewPickMember(){
-  var t = team(state.pick.team), ms = t.members || [];
-  var cards = ms.length ? ms.map(function(m){
-    return '<button class="pk" data-act="pickMember" data-v="' + esc(m.id) + '"><span class="pkname">' + esc(m.name) + '</span><span class="cv">›</span></button>';
-  }).join('') : '<div class="empty">このチームにはメンバーが登録されていません。</div>';
-  return '<div class="entry"><img class="elogo-img" src="assets/logo.png" alt="Attendance.">'
-    + '<div class="etitle">' + esc(t.name) + '</div>'
-    + '<div class="esub">あなたの名前を選んでください</div>'
-    + '<div class="menu">' + cards + '</div>'
-    + '<button class="link" style="align-self:center;margin-top:10px" data-act="pickBack">← チーム選択に戻る</button></div>';
-}
-/* 管理画面のパスワード。これを知っている人だけが管理画面に入れる */
-function viewAdminGate(){
-  var g = state.gate;
-  return '<div class="pad"><div class="hero"><div class="label">管理画面</div><div class="big">管理パスワード</div></div>'
-    + '<div class="notice">管理画面（割振・代表者設定・チーム管理など）に入るにはパスワードが必要です。</div>'
-    + '<label class="fld">パスワード<input type="password" inputmode="numeric" autocomplete="off" data-gfield="code" value="' + esc(g.code) + '" placeholder="8桁の数字"></label>'
-    + (g.err ? '<div class="err" role="alert">' + esc(g.err) + '</div>' : '')
-    + '<div class="hint">デモ：8桁の数字で開きます（本番はサーバーで照合します）</div>'
-    + '<button class="btn primary" data-act="gateSubmit">管理画面に入る</button></div>';
-}
-
-/* =====================================================================
-   描画
-   ===================================================================== */
-function render(){
-  // まだ誰で操作するか決めていなければ、入口（チーム→メンバー選択）を出す
-  if (!state.me) {
-    document.getElementById('app').innerHTML = state.pick.team ? viewPickMember() : viewPickTeam();
-    return;
+  function dropAuth() {
+    store.del(KEY.auth);
+    S.revealPass = {};
+    S.admin = { calendar: null, contacts: null, team: null, teamList: null, teamId: null, power: null };
   }
-  var asgBody = state.asg.screen === 'confirm' ? viewAsgConfirm() : state.asg.screen === 'line' ? viewAsgLine() : viewAsgPick();
-  var body;
-  if (state.tab === 'home') body = viewHome();
-  else if (state.tab === 'att') body = viewAtt();
-  else if (state.tab === 'cal') body = viewCal();
-  else if (state.tab === 'admin') body = state.admin ? viewAdmin() : viewAdminGate();
-  else body = state.admin ? asgBody : viewAdminGate();
-  var overlays = '';
-  if (state.tab === 'cal' && state.cal.sheet) overlays += viewSheet();
-  if (state.tab === 'cal' && state.cal.confirmDel) overlays += viewDelete();
-  if (state.tab === 'asg' && state.admin && state.asg.pending) overlays += viewMove();
-  document.getElementById('app').innerHTML = header() + body + tabbar() + overlays;
-}
 
-/* =====================================================================
-   操作
-   ===================================================================== */
-function saveIdent(){ try { if (state.me) localStorage.setItem('att_ident', JSON.stringify({ team: state.me, member: state.member, memberId: state.memberId })); else localStorage.removeItem('att_ident'); } catch (e) {} }
-function loadIdent(){ try { var r = JSON.parse(localStorage.getItem('att_ident') || 'null'); if (r && team(r.team)) { var t = team(r.team), m = (t.members || []).filter(function(x){ return x.id === r.memberId; })[0]; if (m) { state.me = r.team; state.memberId = r.memberId; state.member = m.name; } } } catch (e) {} }
-function newForm(){
-  var c = state.cal, ds = isSun(c.sel) && c.sel >= TODAY ? [c.sel] : [];
-  return { id: null, type: 'closed', dates: ds, date: c.sel >= TODAY ? c.sel : TODAY, gym: homeOf(state.me), team: state.me, reason: REASONS.closed[0], memo: '', by: state.me };
-}
-function editForm(e){
-  return { id: e.id, type: e.type, dates: e.type === 'other' ? [] : [e.date], date: e.date, gym: e.gym || homeOf(state.me), team: e.team || state.me, reason: e.reason || (REASONS[e.type] ? REASONS[e.type][0] : ''), memo: e.memo || '', by: e.by };
-}
+  function me() {
+    if (!S.boot || !S.me) return null;
+    return S.boot.members.filter(function (m) { return m.id === S.me; })[0] || null;
+  }
 
-var ACTIONS = {
-  tab: function(el){ set({ tab: el.dataset.v }); window.scrollTo(0, 0); },
-  switchIdent: function(){ set({ me: null, member: null, memberId: null, admin: false, pick: { team: null }, gate: { code: '', err: '' }, tab: 'home' }); saveIdent(); },
-  pickTeam: function(el){ state.pick.team = el.dataset.v; render(); },
-  pickBack: function(){ state.pick.team = null; render(); },
-  pickMember: function(el){ var t = team(state.pick.team), m = t && (t.members || []).filter(function(x){ return x.id === el.dataset.v; })[0]; set({ me: state.pick.team, member: m ? m.name : '', memberId: el.dataset.v, tab: 'home' }); saveIdent(); },
-  reload: function(){ bootLoad(); },
-  gateSubmit: function(){
-    if (!/^\d{8}$/.test(state.gate.code || '')) { state.gate.err = 'パスワードは8桁の数字です'; return render(); }
-    set({ admin: true, gate: { code: '', err: '' } });
-  },
+  function teamOf(id) {
+    return S.boot.teams.filter(function (t) { return t.id === id; })[0] || null;
+  }
 
-  calPrev: function(){ var c = state.cal, d = new Date(c.ym[0], c.ym[1] - 1, 1); if (d.getFullYear() < MIN_YM[0] || (d.getFullYear() === MIN_YM[0] && d.getMonth() < MIN_YM[1])) return; setCal({ ym: [d.getFullYear(), d.getMonth()], toast: '' }); },
-  calNext: function(){ var c = state.cal, d = new Date(c.ym[0], c.ym[1] + 1, 1); setCal({ ym: [d.getFullYear(), d.getMonth()], toast: '' }); },
-  calThis: function(){ setCal({ ym: MIN_YM.slice(), sel: TODAY, toast: '' }); },
-  calPick: function(el){ setCal({ sel: el.dataset.date, toast: '' }); },
-  calFilter: function(el){ var f = Object.assign({}, state.cal.filters); f[el.dataset.v] = !f[el.dataset.v]; setCal({ filters: f }); },
-  calNew: function(){ setCal({ sheet: 'new', form: newForm(), toast: '' }); },
-  calEdit: function(el){ var e = state.events.find(function(x){ return x.id === el.dataset.id; }); setCal({ sheet: 'edit', form: editForm(e), toast: '' }); },
-  closeSheet: function(el, ev){ if (el.dataset.self && ev.target !== el) return; setCal({ sheet: null, form: null, confirmDel: false }); },
-  fType: function(el){
-    var f = state.cal.form, k = el.dataset.v;
-    f.type = k; f.reason = REASONS[k] ? REASONS[k][0] : '';
-    if (k !== 'other') f.dates = f.dates.length ? f.dates : (isSun(f.date) ? [f.date] : []);
-    if (!f.gym) f.gym = homeOf(state.me);
+  function setBoot(boot) {
+    S.boot = boot;
+    store.set(KEY.boot, JSON.stringify(boot));
+  }
+
+  function draft(key, fallback) {
+    return S.drafts[key] !== undefined ? S.drafts[key] : (fallback === undefined ? '' : fallback);
+  }
+
+  function clearDrafts(prefix) {
+    Object.keys(S.drafts).forEach(function (k) { if (k.indexOf(prefix) === 0) delete S.drafts[k]; });
+  }
+
+  function textInput(key, fallback, placeholder, type, maxlength) {
+    return '<input class="text-input" type="' + (type || 'text') + '"' + (maxlength ? ' maxlength="' + maxlength + '"' : '') +
+      ' placeholder="' + esc(placeholder || '') + '" data-draft="' + esc(key) + '" value="' + esc(draft(key, fallback)) + '">';
+  }
+
+  function selectInput(key, options, fallback) {
+    var current = draft(key, fallback);
+    return '<select class="text-input" data-draft="' + esc(key) + '">' + options.map(function (o) {
+      return '<option value="' + esc(o[0]) + '"' + (o[0] === current ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
+    }).join('') + '</select>';
+  }
+
+  // ---- 初回(チーム→名前) ----
+  function viewOnboard() {
+    var html = '<div class="ob"><img src="assets/logo.png" alt="Attendance">';
+    if (!S.obTeam) {
+      html += '<h1><span>チームを</span><span>選んでください<i class="acc" style="font-style:normal">.</i></span></h1><div class="ob-list">';
+      S.boot.teams.forEach(function (t) {
+        var size = S.boot.members.filter(function (m) { return m.teamId === t.id; }).length;
+        html += '<button class="ob-item" data-a="obTeam" data-v="' + esc(t.id) + '"><u>' + esc(t.letter) + '</u><strong>' + esc(t.name) +
+          '</strong><small>' + size + '人</small><i>→</i></button>';
+      });
+    } else {
+      html += '<button class="ob-back" data-a="obBack">← チーム選択へ</button>' +
+        '<h1>' + esc(teamOf(S.obTeam).name) + '<i class="acc" style="font-style:normal">.</i></h1>' +
+        '<p>あなたの名前を選んでください。</p><div class="ob-list">';
+      S.boot.members.filter(function (m) { return m.teamId === S.obTeam; }).forEach(function (m) {
+        html += '<button class="ob-item" data-a="obMember" data-v="' + esc(m.id) + '"><strong>' + esc(m.name) + '</strong><i>→</i></button>';
+      });
+    }
+    return html + '</div></div>';
+  }
+
+  function viewHeader(isAdmin, member, team) {
+    var left = isAdmin
+      ? '<button class="back" data-a="tab" data-v="home">← 戻る</button>'
+      : '<img src="assets/logo.png" alt="Attendance">';
+    return '<div class="head">' + left + '<span class="spacer"></span>' +
+      '<button class="chip" data-a="openUser"><b>' + esc(team.letter) + '</b>' + esc(member.name) + '</button></div>';
+  }
+
+  // ---- ホーム ----
+  function viewHome(member, team) {
+    var b = S.boot;
+    var dayOff = b.dayOffs[b.next] !== undefined;
+    var html = '<div class="hero"><span class="hero-date" id="heroDate">' + dateLabel(b.next) + '</span>' +
+      '<span class="hero-side" id="heroSide"><b>SUN</b><span class="label">' + b.next.slice(0, 4) + '</span></span></div>';
+
+    var view = b.allocation;
+    if (dayOff) {
+      html += '<div class="day-off"><h2>練習休み</h2>' + (b.dayOffs[b.next] ? '<p>' + esc(b.dayOffs[b.next]) + '</p>' : '') + '</div>';
+    } else if (view.state === 'confirmed' && view.alloc[team.id]) {
+      var gym = view.gyms.filter(function (g) { return g.id === view.alloc[team.id]; })[0];
+      var mates = gym.teams.filter(function (t) { return t.id !== team.id; }).map(function (t) { return t.name; }).join('、') || 'なし(単独)';
+      html += '<div class="place"><div class="pair"><span>今週の体育館</span><span>' + esc(team.name) + '</span></div>' +
+        '<h2>' + esc(gym.name) + '</h2>' + (gym.start ? '<p class="place-time">' + esc(timeText(gym)) + '</p>' : '') +
+        '<p>一緒に練習:' + esc(mates) + '</p>' +
+        '<a href="' + esc(mapUrl(gym)) + '" target="_blank" rel="noopener">地図を開く ↗</a></div>';
+    } else {
+      html += '<div class="pending"><span class="label-w">今週の体育館</span><span>土曜までに決まり、LINEでお知らせします。</span></div>';
+    }
+
+    if (!dayOff) html += viewTeamAttendance(team);
+    return html + viewComments(team);
+  }
+
+  // ホームに出す自チームの今週の出欠。未定は回答があるときだけ表示する
+  function viewTeamAttendance(team) {
+    var b = S.boot;
+    var statuses = b.attendance[b.next];
+    var names = { yes: [], no: [], maybe: [], none: [] };
+    b.members.forEach(function (m) {
+      if (m.teamId !== team.id) return;
+      var a = statuses[m.id];
+      names[a === 'yes' || a === 'no' || a === 'maybe' ? a : 'none'].push(m.name);
+    });
+    var rows = [['yes', '出席'], ['no', '欠席'], ['maybe', '未定'], ['none', '未回答']];
+    return '<div class="att-list"><div class="att-head"><span class="label">' + esc(team.name) + 'の出欠</span>' +
+      '<span class="label">' + b.members.filter(function (m) { return m.teamId === team.id; }).length + '人</span></div>' +
+      rows.filter(function (r) { return r[0] !== 'maybe' || names.maybe.length; }).map(function (r) {
+        var list = names[r[0]];
+        return '<div class="att"><span class="att-label">' + r[1] + '</span><b' + (r[0] === 'yes' ? ' class="acc"' : '') + '>' + list.length + '</b>' +
+          '<span class="att-names' + (list.length ? '' : ' mute') + '">' + (list.length ? esc(list.join('、')) : 'なし') + '</span></div>';
+      }).join('') + '</div>';
+  }
+
+  function commentTime(stamp) {
+    var m = String(stamp).match(/^\d{4}-(\d{2})-(\d{2})T(\d{2}:\d{2})/);
+    return m ? Number(m[1]) + '/' + Number(m[2]) + ' ' + m[3] : '';
+  }
+
+  // ホームのコメント欄。投稿済みは常に表示し、入力欄だけを開閉する
+  function viewComments(team) {
+    var b = S.boot;
+    var comments = b.comments.filter(function (c) { return c.teamId === team.id; });
+    var notes = b.members.filter(function (m) {
+      return m.teamId === team.id && b.notes[b.next][m.id];
+    });
+    var composer = '<button class="composer-toggle" aria-expanded="' + S.composerOpen + '" data-a="toggleComposer"><span>連絡を書く</span><i>' + (S.composerOpen ? '▲' : '▼') + '</i></button>' +
+      (S.composerOpen
+        ? '<div class="composer"><textarea class="comment-input" rows="3" maxlength="200" placeholder="チームへの連絡を入力" data-draft="comment">' + esc(draft('comment')) + '</textarea>' +
+          '<button class="primary" data-a="postComment">投稿する<span>→</span></button></div>'
+        : '');
+    var commentList = comments.map(function (c) {
+      var canDelete = c.memberId === S.me || !!token();
+      return '<div class="comment"><div class="comment-head"><b>' + esc(c.author) + '</b><span class="label">' + esc(commentTime(c.createdAt)) + '</span>' +
+        (canDelete ? '<button class="link comment-del" data-a="askDelete" data-v="' + esc(c.id) + '">削除</button>' : '') + '</div>' +
+        '<div class="comment-text">' + esc(c.text) + '</div></div>';
+    }).join('') || '<div class="note-line">今週の連絡はまだありません。</div>';
+    var noteList = notes.map(function (m) {
+      return '<div class="note"><b>' + esc(m.name) + '</b><span>' + esc(b.notes[b.next][m.id]) + '</span></div>';
+    }).join('') || '<div class="note-line">今週の個人コメントはありません。</div>';
+    return '<div class="section"><div class="section-head"><span class="label">今週の連絡</span><span class="label">' + comments.length + '件</span></div>' + composer + commentList + '</div>' +
+      '<div class="section"><div class="section-head"><span class="label">個人コメント</span><span class="label">' + notes.length + '件</span></div>' + noteList +
+      '<div class="note-line">個人コメントは出欠画面で週ごとに入力できます。</div></div>';
+  }
+
+  // ---- 出欠 ----
+  function viewAnswer(member, team) {
+    var b = S.boot;
+    var html = '<div class="title" style="padding:14px 0 2px">出欠<span class="acc">.</span></div>' +
+      '<div class="ans-sub">' + esc(team.name) + ' / ' + esc(member.name) + ' タップで保存されます</div>';
+    b.dates.forEach(function (date, i) {
+      var current = b.attendance[date][member.id];
+      var off = b.dayOffs[date] !== undefined;
+      var closed = off || b.weekStates[date] !== 'open';
+      var sub = (i === 0 ? '今週' : i + '週間後') + (off ? '・練習休み' : closed ? '・締切済み' : '');
+      html += '<div class="week"><div class="week-head"><strong>' + dateLabel(date) + '</strong><b>SUN</b><small>' + sub + '</small></div><div class="opts">';
+      ['yes', 'no', 'maybe'].forEach(function (k) {
+        var on = current === k;
+        html += '<button class="opt' + (on ? ' ' + k : '') + '" aria-pressed="' + on + '"' + (closed ? ' disabled' : '') +
+          ' data-a="answer" data-v="' + date + '|' + k + '">' + LABEL[k] + '</button>';
+      });
+      var draftKey = 'note:' + date;
+      var saved = b.notes[date][member.id] || '';
+      var open = !!S.noteOpen[date];
+      // 閉じていても、入力済みのコメントは読めるようにする
+      html += '</div><button class="note-toggle" aria-expanded="' + open + '" data-a="toggleNote" data-v="' + date + '">' +
+        '<span class="label">コメント</span><span class="note-saved">' + (open ? '' : esc(saved)) + '</span><i>' + (open ? '▲' : '▼') + '</i></button>' +
+        (open ? '<input class="text-input" type="text" maxlength="100" placeholder="例:遅れます(入力欄から離れると保存)" data-draft="' + draftKey + '" data-note="' + date + '" value="' + esc(draft(draftKey, saved)) + '">' : '') + '</div>';
+    });
+    return html;
+  }
+
+  // ---- 割り振り ----
+  function viewSummary() {
+    var b = S.boot;
+    var date = b.dates[S.sumIndex];
+    var statuses = b.attendance[date];
+    var totals = { yes: 0, none: 0, ok: 0 };
+    var rows = b.teams.map(function (t) {
+      var c = { yes: 0, no: 0, maybe: 0, none: 0, names: [] };
+      b.members.forEach(function (m) {
+        if (m.teamId !== t.id) return;
+        var a = statuses[m.id];
+        if (a === 'yes' || a === 'no' || a === 'maybe') c[a]++;
+        else { c.none++; c.names.push(m.name + 'さん'); }
+      });
+      var ok = c.yes >= 6;
+      totals.yes += c.yes;
+      totals.none += c.none;
+      if (ok) totals.ok++;
+      return '<div class="bar-row' + (ok ? ' ok' : '') + '"><div class="bar-top"><strong>' + esc(t.name) + '</strong>' +
+        '<span class="bar-track"><span class="bar-fill" style="width:' + (Math.min(c.yes / 12, 1) * 100) + '%"></span></span>' +
+        '<span class="bar-num">' + c.yes + '</span></div>' +
+        '<div class="bar-meta"><span class="bar-state">' + (ok ? '6人以上' : '合流') + '</span><span>未定 ' + c.maybe + '</span><span>不参加 ' + c.no + '</span><span>未回答 ' + c.none + '</span></div>' +
+        (c.names.length ? '<div class="bar-unans">未回答:<span>' + esc(c.names.join('、')) + '</span></div>' : '') + '</div>';
+    }).join('');
+    var tabs = b.dates.map(function (d, i) {
+      return '<button class="week-tab' + (i === S.sumIndex ? ' on' : '') + '" data-a="sumWeek" data-v="' + i + '">' + dateLabel(d) + '</button>';
+    }).join('');
+    return (S.sumOpen ? '<div class="week-tabs">' + tabs + '</div>' : '') +
+      '<div class="kpis"><div class="kpi"><small>参加</small><b class="acc">' + totals.yes + '</b></div>' +
+      '<div class="kpi"><small>未回答</small><b>' + totals.none + '</b></div>' +
+      '<div class="kpi"><small>6人以上</small><b>' + totals.ok + '<i>/' + b.teams.length + '</i></b></div></div>' +
+      '<button class="sum-toggle" data-a="toggleSum"><span>チーム別の集計を' + (S.sumOpen ? '閉じる' : '開く') + '</span><span>' + (S.sumOpen ? '▲' : '▼') + '</span></button>' +
+      (S.sumOpen ? '<div class="bars-head"><span>参加人数</span><span>| 6人ライン(1チーム換算)</span></div><div class="bars"><div class="six"></div>' + rows + '</div>' : '');
+  }
+
+  function closedList(view) {
+    return view.closed.map(function (c) {
+      return '<div class="closed"><b>' + esc(c.name) + '</b><em>' + esc(c.reason) + '</em></div>';
+    }).join('');
+  }
+
+  function viewAlloc(team) {
+    var b = S.boot;
+    var view = b.allocation;
+    var who = auth();
+    var tag = view.state === 'confirmed' ? ['confirmed', '確定済み'] : view.adjusted ? ['adjusting', '調整中'] : ['', '自動の草案'];
+    var head = '<div class="alloc-head"><div><div class="label">' + dateLabel(view.date) + ' SUN</div>' +
+      '<div class="title-sm">割り振り<span class="acc">.</span></div></div>' + (view.dayOff ? '' : '<span class="tag ' + tag[0] + '">' + tag[1] + '</span>') + '</div>';
+    if (view.dayOff) {
+      return head + '<div class="empty"><b>この週は練習休みです。</b>' + esc(view.dayOffReason) + '</div>';
+    }
+    var deadline = view.state === 'open'
+      ? '<span>回答受付中</span><button class="link" data-a="closeWeek">回答を締め切る</button>'
+      : view.state === 'closed'
+        ? '<span>締切済み</span><button class="link" data-a="reopenWeek">受付を再開</button>'
+        : '<span>締切済み</span>' + (who && who.role === 'power' ? '<button class="link" data-a="unconfirm">確定を解除</button>' : '');
+    var html = head + viewSummary() + '<div class="deadline">' + deadline + '</div>';
+    if (view.warnings.length) {
+      html += '<div class="warns">' + view.warnings.map(function (w) {
+        return '<div class="warn"><b>!</b><span>' + esc(w) + '</span></div>';
+      }).join('') + '</div>';
+    }
+    if (view.noOpenGyms) {
+      return html + '<div class="empty"><b>開ける体育館がありません。</b>カレンダーの使用不可を確認してください。</div>' + closedList(view);
+    }
+    html += '<div class="hint">チームをタップして移動先を選びます。</div>';
+    view.gyms.forEach(function (g) {
+      var comp = g.teams.map(function (t) {
+        return '<span class="' + (t.id === team.id ? 'mine' : '') + '" style="flex:' + Math.max(t.yes, 1) + '"></span>';
+      }).join('');
+      var rows = g.teams.map(function (t) {
+        var ok = t.yes >= 6;
+        return '<button class="team-row" data-a="openMove" data-v="' + esc(t.id) + '"><span class="mark' + (t.id === team.id ? ' mine' : '') + '">' + esc(t.letter) + '</span>' +
+          '<span class="team-main"><strong>' + esc(t.name) + '</strong><span class="team-sub' + (ok ? ' ok' : '') + '">' + (ok ? '6人以上' : '合流') + (t.none ? '・未回答' + t.none : '') + '</span></span>' +
+          (t.isHome ? '<span class="home-tag">ホーム</span>' : '') +
+          '<b>' + t.yes + '</b><small>移動 →</small></button>';
+      }).join('');
+      html += '<div class="gym"><div class="gym-head"><strong>' + esc(g.name) + '</strong><b>' + g.total + '</b><small>人</small></div>' +
+        (g.start ? '<div class="label">' + esc(timeText(g)) + '</div>' : '') +
+        '<div class="comp">' + comp + '</div><div>' + rows + '</div></div>';
+    });
+    html += closedList(view);
+    var main = view.state === 'confirmed'
+      ? (b.lineEnabled ? '修正してLINEに再投稿' : '修正を確定する')
+      : (b.lineEnabled ? '確定してLINEに投稿' : '確定する');
+    html += '<div class="alloc-actions"><button class="primary" data-a="openConfirm">' + main + '<span>→</span></button>' +
+      (view.state === 'confirmed' ? '' : '<button class="link reset" data-a="resetDraft">自動の草案に戻す</button>') + '</div>';
+    return html;
+  }
+
+  // ---- カレンダー ----
+  function adminLoading() {
+    return '<div class="empty">読み込み中…</div>';
+  }
+
+  function viewCalendar() {
+    var cal = S.admin.calendar;
+    var html = '<div class="admin-title"><div class="title-sm">カレンダー<span class="acc">.</span></div></div>';
+    if (!cal) return html + adminLoading();
+    cal.days.forEach(function (d) {
+      var lines = [];
+      if (d.dayOff) lines.push('<span class="off">練習休み' + (d.dayOffReason ? ' ' + esc(d.dayOffReason) : '') + '</span>');
+      d.blocks.forEach(function (x) {
+        lines.push('<span><span class="strike">' + esc(x.gym) + '</span> <small>' + esc(x.note || x.reason) + '</small></span>');
+      });
+      d.hours.forEach(function (x) { lines.push('<span>' + esc(x.gym) + ' ' + esc(timeText(x)) + '</span>'); });
+      if (!lines.length) lines.push('<span class="plain">通常どおり</span>');
+      if (d.state === 'confirmed') lines.push('<span class="plain">確定済み</span>');
+      html += '<button class="day" data-a="openDay" data-v="' + d.date + '"><span class="day-date">' + dateLabel(d.date) + '</span>' +
+        '<span class="day-body">' + lines.join('') + '</span><i>→</i></button>';
+    });
+    return html;
+  }
+
+  function viewDaySheet() {
+    var cal = S.admin.calendar;
+    var d = cal && cal.days.filter(function (x) { return x.date === S.dayDate; })[0];
+    if (!d) return '';
+    var gymOptions = cal.gyms.map(function (g) { return [g.id, g.name]; });
+    var confirmed = d.state === 'confirmed';
+    var html = '<div class="scrim" data-a="closeDialog"><div class="sheet scroll" data-a="noop"><div class="label">SUN</div><h3>' + dateLabel(d.date) + 'の予定</h3>';
+
+    html += '<div class="section"><div class="section-head"><span class="label">練習休み</span></div>';
+    if (d.dayOff) {
+      html += '<div class="list-row"><span>練習休み <small>' + esc(d.dayOffReason) + '</small></span><button class="link" data-a="clearDayOff">解除</button></div>';
+    } else if (!confirmed) {
+      html += '<div class="form-row">' + textInput('d:off', '', '理由(任意)', 'text', 50) + '<button class="sub-btn" data-a="setDayOff">休みにする</button></div>';
+    }
+    html += '</div>';
+
+    html += '<div class="section"><div class="section-head"><span class="label">使用不可の体育館</span></div>';
+    d.blocks.forEach(function (x) {
+      html += '<div class="list-row"><span>' + esc(x.gym) + ' <small>' + esc(x.reason) + (x.note ? '(' + esc(x.note) + ')' : '') + '</small></span>' +
+        '<button class="link" data-a="removeBlock" data-v="' + esc(x.id) + '">取り消し</button></div>';
+    });
+    if (confirmed) {
+      html += '<div class="note-line">確定済みの週には登録できません。</div>';
+    } else {
+      html += '<div class="form-row">' + selectInput('d:blockGym', gymOptions, gymOptions[0] && gymOptions[0][0]) +
+        selectInput('d:blockReason', REASONS.map(function (r) { return [r, r]; }), REASONS[0]) + '</div>' +
+        '<div class="form-row">' + textInput('d:blockNote', '', 'メモ(例:運動会)', 'text', 50) + '<button class="sub-btn" data-a="addBlock">登録</button></div>';
+    }
+    html += '</div>';
+
+    html += '<div class="section"><div class="section-head"><span class="label">時間の変更(この日だけ)</span></div>';
+    d.hours.forEach(function (x) {
+      html += '<div class="list-row"><span>' + esc(x.gym) + ' <small>' + esc(timeText(x)) + '</small></span>' +
+        '<button class="link" data-a="clearHours" data-v="' + esc(x.gymId) + '">取り消し</button></div>';
+    });
+    html += '<div class="form-row">' + selectInput('d:hoursGym', gymOptions, gymOptions[0] && gymOptions[0][0]) + '</div>' +
+      '<div class="form-row">' + textInput('d:start', '', '', 'time') + '<span class="time-sep">〜</span>' + textInput('d:end', '', '', 'time') +
+      '<button class="sub-btn" data-a="setHours">登録</button></div></div>';
+
+    return html + '<button class="ghost cancel" data-a="closeDialog">閉じる</button></div></div>';
+  }
+
+  // ---- 連絡先 ----
+  function contactValue(value) {
+    var text = String(value || '');
+    if (/^[\d\-+() ]{9,}$/.test(text)) {
+      return '<a href="tel:' + esc(text.replace(/[^\d+]/g, '')) + '">' + esc(text) + '</a>';
+    }
+    return '<span class="val">' + esc(text) + '</span>';
+  }
+
+  function viewContacts() {
+    var list = S.admin.contacts;
+    var html = '<div class="admin-title"><div class="title-sm">連絡先<span class="acc">.</span></div></div>';
+    if (!list) return html + adminLoading();
+    list.forEach(function (t) {
+      var row = function (label, c) {
+        return '<div class="contact"><span class="role">' + label + '</span>' +
+          (c ? '<b>' + esc(c.name) + '</b>' + contactValue(c.contact) : '<span class="mute">未登録</span>') + '</div>';
+      };
+      html += '<div class="contact-team"><h3><span class="mark">' + esc(t.letter) + '</span>' + esc(t.teamName) + '</h3>' + row('代表', t.rep) + row('副代表', t.vice) + '</div>';
+    });
+    return html;
+  }
+
+  // ---- チーム管理 ----
+  function viewTeamAdmin() {
+    var team = S.admin.team;
+    var who = auth();
+    var html = '<div class="admin-title"><div class="label">' + (team ? esc(team.teamName) : '') + (who && who.role === 'power' ? ' / 管理者' : '') + '</div>' +
+      '<div class="title-sm">チーム管理<span class="acc">.</span></div></div>';
+    if (!team) return html + adminLoading();
+
+    if (S.admin.teamList) {
+      html += '<div class="team-chips">' + S.admin.teamList.map(function (t) {
+        return '<button class="team-chip' + (t.id === team.teamId ? ' on' : '') + (t.passSet ? '' : ' unset') + '" data-a="pickTeam" data-v="' + esc(t.id) + '">' + esc(t.letter) + '</button>';
+      }).join('') + '</div>';
+    }
+
+    html += '<div class="section"><div class="section-head"><span class="label">メンバー</span><span class="label">' + team.members.length + '人</span></div>';
+    team.members.forEach(function (m) {
+      html += '<div class="list-row"><span>' + esc(m.name) + '</span><button class="link" data-a="askRemoveMember" data-v="' + esc(m.id) + '">削除</button></div>';
+    });
+    html += '<div class="form-row">' + textInput('t:newMember', '', '名前を入力', 'text', 30) + '<button class="sub-btn" data-a="addMember">追加</button></div></div>';
+
+    html += '<div class="section"><div class="section-head"><span class="label">連絡先(他チームの担当者にも見えます)</span></div>';
+    [['rep', '代表', team.rep], ['vice', '副代表', team.vice]].forEach(function (r) {
+      html += '<div class="field-label">' + r[1] + '</div><div class="form-row">' + textInput('t:' + r[0] + ':name', r[2].name, '名前', 'text', 30) + '</div>' +
+        '<div class="form-row">' + textInput('t:' + r[0] + ':contact', r[2].contact, '電話番号、LINE ID など', 'text', 100) +
+        '<button class="sub-btn" data-a="saveContact" data-v="' + r[0] + '">保存</button></div>';
+    });
+    html += '</div>';
+
+    html += '<div class="section"><div class="section-head"><span class="label">体育館(基本の使用時間)</span></div>';
+    if (team.homeGym) {
+      html += '<div class="list-row"><span>' + esc(team.homeGym.name) + '</span></div><div class="form-row">' +
+        textInput('t:start', team.homeGym.start, '', 'time') + '<span class="time-sep">〜</span>' + textInput('t:end', team.homeGym.end, '', 'time') +
+        '<button class="sub-btn" data-a="saveGymHours">保存</button></div>';
+    } else {
+      html += '<div class="note-line">ホーム体育館はありません。</div>';
+    }
+    html += '</div>';
+
+    return html + '<div class="section"><button class="link" data-a="logout">この端末のパス入力を解除する</button></div>';
+  }
+
+  // ---- 管理者ページ ----
+  function numberInput(key, placeholder, maxlength, type) {
+    return '<input class="text-input" type="' + (type || 'text') + '" inputmode="numeric" maxlength="' + maxlength + '" autocomplete="new-password"' +
+      ' placeholder="' + esc(placeholder) + '" data-draft="' + esc(key) + '" value="' + esc(draft(key)) + '">';
+  }
+
+  function passCell(t) {
+    if (!t.passSet) return '<small>未設定</small>';
+    if (!t.pass) return '<small>番号不明(再設定してください)</small>';
+    var shown = !!S.revealPass[t.id];
+    return '<span class="pass-value mono">' + (shown ? esc(t.pass) : '••••') + '</span>' +
+      '<button class="link" data-a="toggleReveal" data-v="' + esc(t.id) + '">' + (shown ? '隠す' : '表示') + '</button>';
+  }
+
+  function viewPowerAdmin() {
+    var data = S.admin.power;
+    var html = '<div class="admin-title"><div class="title-sm">管理者<span class="acc">.</span></div></div>';
+    if (!data) return html + adminLoading();
+
+    html += '<div class="section"><div class="section-head"><span class="label">チームの登録</span></div>' +
+      '<div class="form-row">' + textInput('p:teamName', '', 'チーム名', 'text', 30) + '</div>' +
+      '<div class="form-row"><span class="fix letter-input">' + textInput('p:teamLetter', data.nextLetter, '記号', 'text', 2) + '</span>' +
+      selectInput('p:teamGym', [['', 'ホームなし']].concat(data.gyms.map(function (g) { return [g.id, g.name]; })), '') +
+      '<button class="sub-btn" data-a="addTeam">登録</button></div>' +
+      '<div class="note-line">登録後、下のチームパスを設定してください。</div></div>';
+
+    html += '<div class="section"><div class="section-head"><span class="label">チームパス</span><span class="label">' + data.teams.length + 'チーム</span></div>';
+    data.teams.forEach(function (t) {
+      html += '<div class="list-row pass-row"><span class="mark">' + esc(t.letter) + '</span><span class="pass-name">' + esc(t.name) + '</span>' + passCell(t) + '</div>';
+    });
+    html += '<div class="field-label">設定・変更</div><div class="form-row">' +
+      selectInput('p:passTeam', data.teams.map(function (t) { return [t.id, t.name]; }), data.teams[0] && data.teams[0].id) + '</div>' +
+      '<div class="form-row">' + numberInput('p:passNew', '数字4桁', 4) + '<button class="sub-btn" data-a="setTeamPass">設定</button></div>' +
+      '<div class="note-line">変更すると、そのチームの端末は再入力が必要です。</div></div>';
+
+    html += '<div class="section"><div class="section-head"><span class="label">管理者パス</span></div>' +
+      '<div class="form-row">' + numberInput('p:powerNew', '新しい番号(数字8桁)', 8, 'password') + '</div>' +
+      '<div class="form-row">' + numberInput('p:powerConfirm', 'もう一度入力', 8, 'password') + '<button class="sub-btn" data-a="setPowerPass">変更</button></div>' +
+      '<div class="note-line">番号は表示できないので、必ず控えてください。変更すると、他の端末の管理者ログインは解除されます。</div></div>';
+    return html;
+  }
+
+  // ---- 下部タブ ----
+  function viewTabs(isAdmin) {
+    var who = auth();
+    var tabs = isAdmin
+      ? [['alloc', '割り振り'], ['calendar', 'カレンダー'], ['contacts', '連絡先'], ['team', 'チーム管理']]
+      : [['home', 'ホーム'], ['answer', '出欠'], ['admin', '管理画面']];
+    if (isAdmin && who && who.role === 'power') tabs.push(['power', '管理者']);
+    var cols = ' style="grid-template-columns:repeat(' + tabs.length + ',1fr)"';
+    return '<div class="tabs"' + cols + '>' + tabs.map(function (t, i) {
+      return '<button class="tab' + (S.screen === t[0] ? ' on' : '') + '" data-a="tab" data-v="' + t[0] + '"><span>0' + (i + 1) + '</span>' + t[1] + '</button>';
+    }).join('') + '</div>';
+  }
+
+  function viewError() {
+    return '<div class="error"><b>' + esc(S.error) + '</b><p>時間をおいて開き直してください。</p><button class="ghost strong" data-a="reload">読み込み直す</button></div>';
+  }
+
+  // ---- ダイアログ ----
+  function viewPass() {
+    var len = S.passLength;
+    var dots = [];
+    for (var i = 0; i < len; i++) dots.push('<span' + (i < S.code.length ? ' class="on"' : '') + '></span>');
+    var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map(function (k) {
+      return '<button class="key' + (k ? '' : ' none') + '"' + (k ? ' data-a="key" data-v="' + k + '"' : '') + '>' + k + '</button>';
+    }).join('');
+    return '<div class="pass"><div class="label">' + (len === 4 ? 'チームのパスコード' : '管理者パスコード') + '</div><div class="dots">' + dots.join('') + '</div>' +
+      '<div class="pass-msg' + (S.codeErr ? ' err' : '') + '">' + esc(S.codeMsg) + '</div><div class="keys">' + keys + '</div>' +
+      '<button class="link" data-a="togglePass">' + (len === 4 ? '管理者用' : 'チーム用') + '</button>' +
+      '<button class="link" data-a="closeDialog">やめる</button></div>';
+  }
+
+  function viewConfirmSheet(title, note, action, label) {
+    return '<div class="scrim" data-a="closeDialog"><div class="sheet" data-a="noop"><h3>' + esc(title) + '</h3>' +
+      '<div class="conf-note">' + esc(note) + '</div>' +
+      '<div class="conf-btns"><button class="ghost" style="height:56px" data-a="closeDialog">戻る</button>' +
+      '<button class="go" data-a="' + action + '">' + esc(label) + '</button></div></div></div>';
+  }
+
+  function viewDialog(member, team) {
+    if (S.dialog === 'user') {
+      return '<div class="scrim" data-a="closeDialog"><div class="sheet sheet-user" data-a="noop"><h3>' + esc(member.name) + 'さん / ' + esc(team.name) + '</h3>' +
+        '<p>この端末に名前を記憶しています。</p><button class="ghost strong" data-a="changeUser">名前を選び直す</button></div></div>';
+    }
+    if (S.dialog === 'code') return viewPass();
+    if (S.dialog === 'deleteComment') return viewConfirmSheet('このコメントを削除しますか?', '削除すると元に戻せません。', 'deleteComment', '削除する');
+    if (S.dialog === 'day') return viewDaySheet();
+    if (S.dialog === 'removeMember') {
+      var target = S.admin.team && S.admin.team.members.filter(function (m) { return m.id === S.removeMemberId; })[0];
+      return viewConfirmSheet((target ? target.name : '') + 'さんを削除しますか?', '名簿と集計から外れます。過去の出欠とコメントは残ります。', 'removeMember', '削除する');
+    }
+    var view = S.boot.allocation;
+    if (S.dialog === 'move') {
+      var moving = teamOf(S.moveTeam);
+      var yes = 0;
+      view.gyms.forEach(function (g) { g.teams.forEach(function (t) { if (t.id === moving.id) yes = t.yes; }); });
+      var opts = view.gyms.map(function (g) {
+        var cur = view.alloc[moving.id] === g.id;
+        return '<button class="move-opt"' + (cur ? ' disabled' : ' data-a="move" data-v="' + esc(g.id) + '"') + '><span>' + esc(g.name) + '</span><small>' +
+          (cur ? '現在' : g.total + ' → ' + (g.total + yes) + '人') + '</small></button>';
+      }).join('');
+      return '<div class="scrim" data-a="closeDialog"><div class="sheet" data-a="noop"><div class="label">移動先を選択</div><h3>' + esc(moving.name) + '(' + yes + '人)</h3>' + opts +
+        '<button class="ghost cancel" data-a="closeDialog">やめる</button></div></div>';
+    }
+    if (S.dialog === 'confirm') {
+      var rows = view.gyms.map(function (g) {
+        return '<div class="conf-row"><b>' + esc(g.name) + '</b><span>' + esc(g.teams.map(function (t) { return t.letter; }).join(' / ')) + '</span><strong>' + g.total + '</strong></div>';
+      }).join('');
+      var line = S.boot.lineEnabled;
+      return '<div class="scrim"><div class="sheet"><h3>この内容で確定しますか?</h3>' + rows +
+        '<div class="conf-note">' + (line ? 'LINEグループに投稿し、Googleカレンダーにも反映します。' : '未締切の場合は、回答も同時に締め切ります。') + '</div>' +
+        '<div class="conf-btns"><button class="ghost" style="height:56px" data-a="closeDialog">戻る</button>' +
+        '<button class="go" data-a="confirm">' + (line ? '確定して投稿' : '確定する') + '</button></div></div></div>';
+    }
+    return '';
+  }
+
+  // ---- 描画 ----
+  function fitHero() {
+    var date = document.getElementById('heroDate');
+    var side = document.getElementById('heroSide');
+    if (!date || !side) return;
+    // 12/27 のような長い日付は、右の SUN と重ならない大きさまで縮める
+    date.style.fontSize = '';
+    var room = date.parentNode.clientWidth - side.offsetWidth - 8;
+    var width = date.getBoundingClientRect().width;
+    if (width > room) date.style.fontSize = Math.floor(118 * room / width) + 'px';
+  }
+
+  function render() {
+    var app = document.getElementById('app');
+    var overlay = document.getElementById('overlay');
+    if (S.error && !S.boot) {
+      app.innerHTML = viewError();
+      overlay.innerHTML = '';
+      return;
+    }
+    if (!S.boot) return;
+    var member = me();
+    if (!member) {
+      app.innerHTML = viewOnboard();
+      overlay.innerHTML = '';
+      return;
+    }
+    var team = teamOf(member.teamId);
+    var isAdmin = !!ADMIN_SCREENS[S.screen];
+    var previous = document.getElementById('mainScroll');
+    var keepScroll = previous && previous.getAttribute('data-screen') === S.screen ? previous.scrollTop : 0;
+    var body = S.screen === 'answer' ? viewAnswer(member, team)
+      : S.screen === 'alloc' ? viewAlloc(team)
+      : S.screen === 'calendar' ? viewCalendar()
+      : S.screen === 'contacts' ? viewContacts()
+      : S.screen === 'team' ? viewTeamAdmin()
+      : S.screen === 'power' ? viewPowerAdmin()
+      : viewHome(member, team);
+    app.innerHTML = viewHeader(isAdmin, member, team) +
+      '<div class="main" id="mainScroll" data-screen="' + S.screen + '">' + body + '</div>' + viewTabs(isAdmin);
+    document.getElementById('mainScroll').scrollTop = keepScroll;
+    overlay.innerHTML = viewDialog(member, team);
+    fitHero();
+  }
+
+  // ---- サーバー応答の反映 ----
+  function applyData(result) {
+    if (result.boot) setBoot(result.boot);
+    if (result.calendar) S.admin.calendar = result.calendar;
+    if (result.contacts) S.admin.contacts = result.contacts;
+    if (result.team) S.admin.team = result.team;
+    if (result.teamList) S.admin.teamList = result.teamList;
+    if (result.powerAdmin) S.admin.power = result.powerAdmin;
+  }
+
+  // keepDialog が true なら、カレンダーのシートなどを開いたまま内容だけ更新する
+  function handleResult(result, message, keepDialog) {
+    if (result.ok) {
+      applyData(result);
+      if (!keepDialog) {
+        S.dialog = null;
+        S.moveTeam = null;
+      }
+      render();
+      if (message) toast(message);
+      return true;
+    }
+    if (result.code === 'AUTH') {
+      dropAuth();
+      S.screen = 'home';
+      S.dialog = 'code';
+      S.passLength = 4;
+      S.code = '';
+      S.codeErr = true;
+      S.codeMsg = result.message;
+    } else {
+      if (!keepDialog) {
+        S.dialog = null;
+        S.moveTeam = null;
+      }
+      toast(result.message);
+    }
     render();
-  },
-  fDate: function(el){
-    var f = state.cal.form, d = el.dataset.date;
-    if (state.cal.sheet === 'edit') f.dates = [d];
-    else if (f.dates.indexOf(d) >= 0) f.dates = f.dates.filter(function(x){ return x !== d; });
-    else { f.dates.push(d); f.dates.sort(); }
+    return false;
+  }
+
+  function adminCall(name, extra, message, options) {
+    var opts = options || {};
+    call(name, [token()].concat(extra || []), function (result) {
+      if (handleResult(result, message, opts.keep) && opts.clear) clearDrafts(opts.clear);
+      if (result.ok && opts.clear) render();
+    });
+  }
+
+  function teamIdForAdmin() {
+    var who = auth();
+    if (!who) return null;
+    if (who.role !== 'power') return who.teamId;
+    return S.admin.teamId || S.boot.teams[0].id;
+  }
+
+  function openAdminScreen(screen) {
+    S.screen = screen;
+    S.dialog = null;
     render();
-  },
-  saveEvent: function(){
-    var c = state.cal, f = c.form;
-    if (cannotSave(f)) return;
-    var ds = targetDates(f), warned = !!sheetWarn(f);
-    var mk = function(d, id){ return { id: id, type: f.type, date: d, gym: f.type === 'closed' ? f.gym : undefined, team: f.type === 'rest' ? f.team : undefined, reason: f.type === 'other' ? '' : f.reason, memo: f.memo.trim(), by: f.by }; };
-    if (c.sheet === 'edit') state.events = state.events.map(function(e){ return e.id === f.id ? mk(ds[0], e.id) : e; });
-    else ds.forEach(function(d){ state.events.push(mk(d, 'e' + (state.nextId++))); });
-    var first = parse(ds[0]);
-    setCal({ sheet: null, form: null, sel: ds[0], ym: [first.getFullYear(), first.getMonth()],
-      toast: (c.sheet === 'edit' ? '予定を修正しました' : ds.length + '件の予定を登録しました') + (warned ? '（割振に反映しました）' : '') });
-  },
-  askDelete: function(){ setCal({ confirmDel: true }); },
-  cancelDelete: function(){ setCal({ confirmDel: false }); },
-  doDelete: function(){
-    var id = state.cal.form.id;
-    state.events = state.events.filter(function(e){ return e.id !== id; });
-    setCal({ sheet: null, form: null, confirmDel: false, toast: '予定を削除しました' });
-  },
-
-  asgGym: function(el){ setAsg({ gym: el.dataset.v }); },
-  asgTeam: function(el){
-    if (!state.admin) return;
-    var id = el.dataset.v, s = state.asg, a = s.assign[id], assign = Object.assign({}, s.assign);
-    if (a === s.gym) { assign[id] = null; return setAsg({ assign: assign, decided: false }); }
-    if (!a || closedOn(DATE, a)) { assign[id] = s.gym; return setAsg({ assign: assign, decided: false }); }
-    setAsg({ pending: id });
-  },
-  cancelMove: function(){ setAsg({ pending: null }); },
-  confirmMove: function(){ var s = state.asg, assign = Object.assign({}, s.assign); assign[s.pending] = s.gym; setAsg({ assign: assign, pending: null, decided: false }); },
-  asgConfirm: function(){ setAsg({ screen: 'confirm' }); window.scrollTo(0, 0); },
-  asgBack: function(){ setAsg({ screen: 'pick', posted: false, copied: false }); window.scrollTo(0, 0); },
-  asgDecide: function(){ setAsg({ screen: 'line', decided: true, posted: false, copied: false }); window.scrollTo(0, 0); },
-  post: function(){ setAsg({ posted: true, copied: false }); },
-  copy: function(){
-    var done = function(){ setAsg({ copied: true }); };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(lineText()).then(done, done); else done();
+    if (screen === 'alloc') adminCall('apiAllocation');
+    if (screen === 'calendar') adminCall('apiCalendar');
+    if (screen === 'contacts') adminCall('apiContacts');
+    if (screen === 'team') adminCall('apiTeamAdmin', [teamIdForAdmin()]);
+    if (screen === 'power') adminCall('apiPowerAdmin');
   }
-};
 
-document.addEventListener('click', function(ev){
-  var el = ev.target.closest('[data-act]');
-  if (!el || el.disabled) return;
-  var fn = ACTIONS[el.dataset.act];
-  if (fn) fn(el, ev);
-});
-/* セレクト・日付は変更時に再描画。文字入力は再描画せず値だけ保持（入力中のフォーカスを保つ） */
-document.addEventListener('change', function(ev){
-  var el = ev.target;
-  if (el.dataset.field && state.cal.form) {
-    var f = state.cal.form;
-    f[el.dataset.field] = el.value;
-    if (el.dataset.field === 'date' && f.type !== 'other') f.dates = isSun(el.value) ? [el.value] : f.dates;
-    if (el.dataset.field !== 'memo') render();
+  function saveNote(date, note) {
+    var map = S.boot.notes[date];
+    var before = map[S.me] || '';
+    var memberId = S.me;
+    if (before === note) return;
+    if (note) map[memberId] = note; else delete map[memberId];
+    call('apiSaveNote', [memberId, date, note], function (result) {
+      if (result.ok) {
+        delete S.drafts['note:' + date];
+        store.set(KEY.boot, JSON.stringify(S.boot));
+        toast(dateLabel(date) + ' ' + (note ? 'コメントを保存しました' : 'コメントを削除しました'));
+        return;
+      }
+      // 保存できなかった場合は保存済みの値を戻し、入力内容は欄に残す
+      if (before) map[memberId] = before; else delete map[memberId];
+      toast(result.message);
+    });
   }
-  if (el.dataset.gfield) { state.gate[el.dataset.gfield] = el.value; }
-});
-document.addEventListener('input', function(ev){
-  var el = ev.target;
-  if (el.dataset.field === 'memo' && state.cal.form) {
-    state.cal.form.memo = el.value;
-    var b = document.getElementById('saveBtn'); if (b) b.disabled = cannotSave(state.cal.form);
+
+  function loginCode() {
+    S.loggingIn = true;
+    S.codeMsg = '確認中…';
+    render();
+    call('apiLogin', [S.code], function (result) {
+      S.loggingIn = false;
+      S.code = '';
+      if (result.ok) {
+        store.set(KEY.auth, JSON.stringify({ token: result.token, role: result.role, teamId: result.teamId, expires: result.expires }));
+        toast(result.role === 'power' ? '管理者モード' : '担当者モード');
+        openAdminScreen('alloc');
+        return;
+      }
+      S.codeErr = true;
+      S.codeMsg = result.message;
+      render();
+    });
   }
-  if (el.dataset.gfield === 'code') { state.gate.code = el.value; }
-});
-document.addEventListener('keydown', function(ev){
-  if (ev.key !== 'Escape') return;
-  if (state.asg.pending) return setAsg({ pending: null });
-  if (state.cal.confirmDel) return setCal({ confirmDel: false });
-  if (state.cal.sheet) return setCal({ sheet: null, form: null });
-});
 
-function renderLoading(){
-  document.getElementById('app').innerHTML = '<div class="entry"><img class="elogo-img" src="assets/logo.png" alt="Attendance."><div class="esub">読み込み中…</div></div>';
-}
-function renderError(e){
-  document.getElementById('app').innerHTML = '<div class="entry"><img class="elogo-img" src="assets/logo.png" alt="Attendance.">'
-    + '<div class="etitle">読み込みに失敗しました</div>'
-    + '<div class="esub">通信エラー（' + esc(e && e.message ? e.message : '') + '）。電波のよい場所でお試しください。</div>'
-    + '<button class="btn primary" data-act="reload">再読み込み</button></div>';
-}
-// getBootstrap の実データを取得してからアプリを描く
-function bootLoad(){
-  renderLoading();
-  api('getBootstrap').then(function(data){ buildData(data.boot); loadIdent(); render(); }).catch(function(e){ renderError(e); });
-}
+  // ---- 操作 ----
+  var actions = {
+    noop: function () {},
+    reload: function () { load(); },
+    obTeam: function (v) { S.obTeam = v; render(); },
+    obBack: function () { S.obTeam = null; render(); },
+    obMember: function (v) {
+      S.me = v;
+      S.obTeam = null;
+      S.screen = 'home';
+      store.set(KEY.me, v);
+      render();
+      toast(me().name + 'さんとして記憶しました');
+    },
+    tab: function (v) {
+      if (v === 'admin') { actions.goAdmin(); return; }
+      if (ADMIN_SCREENS[v]) { openAdminScreen(v); return; }
+      S.screen = v;
+      S.dialog = null;
+      render();
+    },
+    openUser: function () { S.dialog = 'user'; render(); },
+    closeDialog: function () {
+      S.dialog = null;
+      S.moveTeam = null;
+      S.code = '';
+      S.codeMsg = '';
+      S.codeErr = false;
+      clearDrafts('d:');
+      render();
+    },
+    changeUser: function () {
+      S.me = null;
+      S.dialog = null;
+      S.screen = 'home';
+      store.del(KEY.me);
+      render();
+    },
+    answer: function (v) {
+      var parts = v.split('|');
+      var date = parts[0];
+      var status = parts[1];
+      var map = S.boot.attendance[date];
+      var before = map[S.me];
+      if (before === status) return;
+      map[S.me] = status;
+      render();
+      toast(dateLabel(date) + ' ' + LABEL[status] + 'で保存しました');
+      call('apiSetAttendance', [S.me, date, status], function (result) {
+        if (result.ok) {
+          store.set(KEY.boot, JSON.stringify(S.boot));
+          return;
+        }
+        // 保存できなかったので表示を元に戻す
+        if (before) map[S.me] = before; else delete map[S.me];
+        if (result.code === 'WEEK_CLOSED') S.boot.weekStates[date] = 'closed';
+        render();
+        toast(result.message);
+      });
+    },
+    toggleComposer: function () { S.composerOpen = !S.composerOpen; render(); },
+    toggleNote: function (v) {
+      S.noteOpen[v] = !S.noteOpen[v];
+      render();
+      if (S.noteOpen[v]) {
+        var input = document.querySelector('[data-note="' + v + '"]');
+        if (input) input.focus();
+      }
+    },
+    postComment: function () {
+      var text = draft('comment').trim();
+      if (!text) { toast('コメントを入力してください'); return; }
+      call('apiPostComment', [S.me, S.boot.next, text], function (result) {
+        if (result.ok) {
+          S.drafts.comment = '';
+          S.composerOpen = false;
+        }
+        handleResult(result, '投稿しました');
+      });
+    },
+    askDelete: function (v) { S.dialog = 'deleteComment'; S.deleteId = v; render(); },
+    deleteComment: function () {
+      var id = S.deleteId;
+      S.dialog = null;
+      S.deleteId = null;
+      render();
+      call('apiDeleteComment', [id, S.me, token()], function (result) {
+        // 他の人が先に削除していた場合は、最新の状態を取り直す
+        if (!result.ok && result.code === 'NOT_FOUND') load();
+        handleResult(result, '削除しました');
+      });
+    },
 
-bootLoad();
+    // パス入力
+    goAdmin: function () {
+      if (token()) { openAdminScreen('alloc'); return; }
+      S.dialog = 'code';
+      S.passLength = 4;
+      S.code = '';
+      S.codeErr = false;
+      S.codeMsg = '';
+      render();
+    },
+    togglePass: function () {
+      S.passLength = S.passLength === 4 ? 8 : 4;
+      S.code = '';
+      S.codeErr = false;
+      S.codeMsg = '';
+      render();
+    },
+    key: function (v) {
+      if (S.loggingIn) return;
+      S.codeErr = false;
+      S.codeMsg = '';
+      if (v === '⌫') {
+        S.code = S.code.slice(0, -1);
+        render();
+        return;
+      }
+      S.code = (S.code + v).slice(0, S.passLength);
+      if (S.code.length < S.passLength) { render(); return; }
+      loginCode();
+    },
+    logout: function () {
+      dropAuth();
+      S.screen = 'home';
+      render();
+      toast('パス入力を解除しました');
+    },
+
+    // 割り振り
+    sumWeek: function (v) { S.sumIndex = Number(v); render(); },
+    toggleSum: function () { S.sumOpen = !S.sumOpen; if (!S.sumOpen) S.sumIndex = 0; render(); },
+    openMove: function (v) { S.dialog = 'move'; S.moveTeam = v; render(); },
+    move: function (v) {
+      var name = teamOf(S.moveTeam).name;
+      var gym = S.boot.allocation.gyms.filter(function (g) { return g.id === v; })[0];
+      adminCall('apiMoveTeam', [S.boot.next, S.moveTeam, v], name + ' → ' + gym.name);
+      S.dialog = null;
+      render();
+    },
+    resetDraft: function () { adminCall('apiResetDraft', [S.boot.next], '自動の草案に戻しました'); },
+    closeWeek: function () { adminCall('apiCloseWeek', [S.boot.next], '回答を締め切りました'); },
+    reopenWeek: function () { adminCall('apiReopenWeek', [S.boot.next], '回答の受付を再開しました'); },
+    unconfirm: function () { adminCall('apiUnconfirm', [S.boot.next], '確定を解除しました'); },
+    openConfirm: function () { S.dialog = 'confirm'; render(); },
+    confirm: function () {
+      S.dialog = null;
+      render();
+      adminCall('apiConfirm', [S.boot.next], '確定しました');
+    },
+
+    // カレンダー
+    openDay: function (v) {
+      S.dayDate = v;
+      S.dialog = 'day';
+      clearDrafts('d:');
+      render();
+    },
+    setDayOff: function () { adminCall('apiSetDayOff', [S.dayDate, draft('d:off')], '練習休みにしました', { keep: true, clear: 'd:off' }); },
+    clearDayOff: function () { adminCall('apiClearDayOff', [S.dayDate], '練習休みを解除しました', { keep: true }); },
+    addBlock: function () {
+      var gyms = S.admin.calendar.gyms;
+      adminCall('apiAddBlock', [S.dayDate, draft('d:blockGym', gyms[0] && gyms[0].id), draft('d:blockReason', REASONS[0]), draft('d:blockNote')],
+        '使用不可を登録しました', { keep: true, clear: 'd:blockNote' });
+    },
+    removeBlock: function (v) { adminCall('apiRemoveBlock', [S.dayDate, v], '取り消しました', { keep: true }); },
+    setHours: function () {
+      var gyms = S.admin.calendar.gyms;
+      adminCall('apiSetDayHours', [S.dayDate, draft('d:hoursGym', gyms[0] && gyms[0].id), draft('d:start'), draft('d:end')],
+        '時間を変更しました', { keep: true, clear: 'd:start' });
+    },
+    clearHours: function (v) { adminCall('apiClearDayHours', [S.dayDate, v], '取り消しました', { keep: true }); },
+
+    // チーム管理
+    pickTeam: function (v) {
+      S.admin.teamId = v;
+      S.admin.team = null;
+      clearDrafts('t:');
+      render();
+      adminCall('apiTeamAdmin', [v]);
+    },
+    addMember: function () {
+      adminCall('apiAddMember', [S.admin.team.teamId, draft('t:newMember')], 'メンバーを追加しました', { clear: 't:newMember' });
+    },
+    askRemoveMember: function (v) { S.dialog = 'removeMember'; S.removeMemberId = v; render(); },
+    removeMember: function () {
+      var id = S.removeMemberId;
+      S.dialog = null;
+      S.removeMemberId = null;
+      render();
+      adminCall('apiRemoveMember', [S.admin.team.teamId, id], 'メンバーを削除しました');
+    },
+    saveContact: function (v) {
+      var current = S.admin.team[v];
+      adminCall('apiSaveContact', [S.admin.team.teamId, v, draft('t:' + v + ':name', current.name), draft('t:' + v + ':contact', current.contact)],
+        '連絡先を保存しました', { clear: 't:' + v + ':' });
+    },
+    saveGymHours: function () {
+      var gym = S.admin.team.homeGym;
+      adminCall('apiSaveGymHours', [S.admin.team.teamId, draft('t:start', gym.start), draft('t:end', gym.end)],
+        '使用時間を保存しました', { clear: 't:start' });
+      delete S.drafts['t:end'];
+    },
+
+    // 管理者ページ
+    toggleReveal: function (v) { S.revealPass[v] = !S.revealPass[v]; render(); },
+    addTeam: function () {
+      adminCall('apiAddTeam', [draft('p:teamName'), draft('p:teamLetter', S.admin.power.nextLetter), draft('p:teamGym')],
+        'チームを登録しました', { clear: 'p:team' });
+    },
+    setTeamPass: function () {
+      var teams = S.admin.power.teams;
+      adminCall('apiSetTeamPass', [draft('p:passTeam', teams[0] && teams[0].id), draft('p:passNew')], 'チームパスを設定しました', { clear: 'p:passNew' });
+    },
+    setPowerPass: function () {
+      call('apiSetPowerPass', [token(), draft('p:powerNew'), draft('p:powerConfirm')], function (result) {
+        if (result.ok) {
+          // 新しいトークンに切り替えて、そのまま操作を続けられるようにする
+          store.set(KEY.auth, JSON.stringify({ token: result.token, role: 'power', teamId: null, expires: result.expires }));
+          clearDrafts('p:power');
+        }
+        handleResult(result, '管理者パスを変更しました');
+      });
+    }
+  };
+
+  document.addEventListener('click', function (event) {
+    var el = event.target.closest('[data-a]');
+    if (!el || el.disabled) return;
+    var fn = actions[el.getAttribute('data-a')];
+    if (fn) fn(el.getAttribute('data-v'));
+  });
+  // 入力途中の文字列を保持する
+  document.addEventListener('input', function (event) {
+    var key = event.target.getAttribute('data-draft');
+    if (key) S.drafts[key] = event.target.value;
+  });
+  // 個人コメントは入力欄から離れたときに保存する
+  document.addEventListener('change', function (event) {
+    var date = event.target.getAttribute('data-note');
+    if (date) saveNote(date, event.target.value.trim());
+  });
+  window.addEventListener('resize', fitHero);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitHero);
+
+  // ---- 起動 ----
+  function load() {
+    S.error = null;
+    render();
+    call('apiBootstrap', [], function (result) {
+      if (result.ok) {
+        setBoot(result.boot);
+      } else if (!S.boot || result.code === 'SETUP_REQUIRED') {
+        S.boot = null;
+        S.error = result.message;
+      } else {
+        toast('最新の情報を取得できませんでした');
+      }
+      // 入力中に描き直すとフォーカスが外れるので、次の操作まで待つ
+      var active = document.activeElement;
+      if (active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return;
+      render();
+    });
+  }
+
+  // 以前の形式のパス情報を片付ける
+  store.del('attendance.token');
+  store.del('attendance.tokenExp');
+
+  // 前回のデータがあれば先に表示し、裏で最新を取得する(GAS の読み込みが遅いため)
+  try {
+    var cached = JSON.parse(store.get(KEY.boot) || 'null');
+    // 古い形式の保存データは使わず、サーバーの応答を待つ
+    if (cached && cached.teams && cached.notes && cached.comments && cached.dayOffs) S.boot = cached;
+  } catch (e) { /* 壊れた保存データは無視する */ }
+  load();
+
+  // プレビューと動作確認から画面を操作するための入口
+  window.App = { act: function (name, value) { actions[name](value); }, state: S };
+})();
