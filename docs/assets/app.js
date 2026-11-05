@@ -382,9 +382,11 @@
   }
   function allocStatus() {
     var A = allocA(), who = auth();
-    if (A.state === 'open') return '<button class="link" data-a="allocClose">回答受付中・締切</button>';
-    if (A.state === 'closed') return '<button class="link" data-a="allocReopen">締切済み・受付再開</button>';
-    return '<span class="tag confirmed">確定済み</span>' + (who && who.role === 'power' ? '<button class="link" data-a="allocUnconfirm">解除</button>' : '');
+    if (A.state === 'confirmed') return '<span class="tag confirmed">確定済み</span>' + (who && who.role === 'power' ? '<button class="link" data-a="allocUnconfirm">解除</button>' : '');
+    var on = A.state === 'open';
+    return '<button class="swx' + (on ? ' on' : '') + '" role="switch" aria-checked="' + on + '" data-a="' + (on ? 'allocClose' : 'allocReopen') + '">'
+      + '<span class="swx-text">' + (on ? '回答受付中' : '締め切り中') + '</span>'
+      + '<span class="swx-track"><span class="swx-knob"></span></span></button>';
   }
 
   function viewAlloc() {
