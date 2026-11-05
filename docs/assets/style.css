@@ -304,8 +304,16 @@ select.text-input{padding:0 8px}
 .team-chip.on{background:var(--tx);border-color:var(--tx);color:var(--bg)}
 .team-chip.unset{border-style:dashed}
 
-/* メンバーの休部 */
-.member-row .swx{margin-left:auto}
+/* 自チーム名(各チームパスで入ったとき) */
+.team-self{display:flex;flex-direction:column;gap:2px;margin:14px 0 4px;padding:12px 16px;border:1px solid var(--acc);background:rgba(200,240,49,.08)}
+.team-self b{font-size:24px;font-weight:700;letter-spacing:-.02em;color:var(--acc)}
+/* メンバー行(名前タップで在籍/休部、編集で改名) */
+.member-name{flex:1;min-width:0;display:flex;align-items:center;gap:10px;text-align:left}
+.member-name .mnm{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.member-row.is-leave .mnm{color:var(--mute)}
+.mstatus{flex:none;font-family:var(--mono);font-size:10px;padding:2px 7px;border:1px solid var(--rule)}
+.mstatus.active{color:var(--acc);border-color:var(--acc)}
+.mstatus.leave{color:var(--mute)}
 .member-row .link{flex:none;margin-left:0}
 .leave-badge{display:inline-block;margin-left:8px;font-family:var(--mono);font-size:10px;color:var(--mute);border:1px solid var(--rule);padding:1px 5px;vertical-align:middle}
 /* 小さめスイッチ(行内) */
