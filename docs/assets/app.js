@@ -30,6 +30,7 @@
     deleteId: null,
     dayDate: null,
     removeMemberId: null,
+    deleteTeamId: null,
     drafts: {},        // 入力途中の文字列。再描画しても消えないよう保持する
     passLength: 4,
     code: '',
@@ -37,6 +38,7 @@
     codeErr: false,
     loggingIn: false,
     pendingWrites: 0,
+    busyLabel: '',     // 処理中インジケータの文言(登録中… など)
     error: null,
     revealPass: {},    // 管理者ページで番号を表示しているチーム
     ui: { openReg: false, openPower: false },   // 管理者ページの折りたたみ(チーム登録・管理者パス)
@@ -73,15 +75,35 @@
     return item && item.start ? item.start + '〜' + item.end : '';
   }
 
-  function setBusy(delta) {
+  function setBusy(delta, label) {
     S.pendingWrites += delta;
+    if (delta > 0 && label) S.busyLabel = label;
     document.getElementById('busy').hidden = S.pendingWrites <= 0;
+    renderBusyPill();
+    if (S.pendingWrites <= 0) S.busyLabel = '';
+  }
+
+  // 処理中のラベル付きインジケータ(登録中…・割当中… など)。時間のかかる操作で状態を見せる
+  function renderBusyPill() {
+    var pill = document.getElementById('busyPill');
+    if (!pill) {
+      pill = document.createElement('div');
+      pill.id = 'busyPill';
+      pill.className = 'busy-pill';
+      document.body.appendChild(pill);
+    }
+    if (S.pendingWrites > 0 && S.busyLabel) {
+      pill.innerHTML = '<span class="busy-spin"></span>' + esc(S.busyLabel);
+      pill.hidden = false;
+    } else {
+      pill.hidden = true;
+    }
   }
 
   // サーバーの api* を fetch で呼ぶ。通信エラーも応答エラーと同じ形で返す
   // GitHub Pages から GAS を呼ぶため、プリフライトを避けて text/plain で送る。独自ヘッダー・Cookie は付けない
-  function call(name, args, done) {
-    setBusy(1);
+  function call(name, args, done, label) {
+    setBusy(1, label);
     fetch(window.API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -694,9 +716,10 @@
     if (!team) return html + adminLoading();
 
     if (S.admin.teamList) {
-      html += '<div class="team-chips">' + S.admin.teamList.map(function (t) {
-        return '<button class="team-chip' + (t.id === team.teamId ? ' on' : '') + (t.passSet ? '' : ' unset') + '" data-a="pickTeam" data-v="' + esc(t.id) + '">' + esc(t.name) + '</button>';
-      }).join('') + '</div>';
+      html += '<div class="team-switch"><span class="label">チーム</span><select class="text-input" data-pick="team">' +
+        S.admin.teamList.map(function (t) {
+          return '<option value="' + esc(t.id) + '"' + (t.id === team.teamId ? ' selected' : '') + '>' + esc(t.name) + (t.passSet ? '' : '（パス未設定）') + '</option>';
+        }).join('') + '</select></div>';
     }
 
     var activeCount = team.members.filter(function (m) { return !m.onLeave; }).length;
@@ -788,6 +811,12 @@
         '<div class="form-row">' + textInput('p:teamGymName', '', 'ホーム体育館名（任意）', 'text', 40) +
         '<button class="sub-btn" data-a="addTeam">登録</button></div>' +
         '<div class="note-line">記号はチーム名の頭文字から自動で付きます。体育館がマスタになければ追加されます。登録後、上のチームパスを設定してください。</div>';
+      html += '<div class="field-label">登録済みチームの削除</div>';
+      data.teams.forEach(function (t) {
+        html += '<div class="list-row"><span class="mark">' + esc(teamMark(t.name)) + '</span><span class="pass-name">' + esc(t.name) + '</span>' +
+          '<button class="link danger" data-a="askDeleteTeam" data-v="' + esc(t.id) + '">削除</button></div>';
+      });
+      html += '<div class="note-line">削除するとメンバーは名簿から外れます。過去の記録は残ります。</div>';
     }
     html += '</div>';
     return html;
@@ -842,6 +871,10 @@
     if (S.dialog === 'deleteComment') return viewConfirmSheet('このコメントを削除しますか?', '削除すると元に戻せません。', 'deleteComment', '削除する');
     if (S.dialog === 'randomPass') return viewConfirmSheet('未設定のチームにパスを割り当てますか?', 'パス未設定のチームに、重複しない4桁をランダムで設定します。設定済みのチームは変わりません。', 'randomizeTeamPasses', '割り当てる');
     if (S.dialog === 'resetPower') return viewConfirmSheet('管理者パスを再設定しますか?', '新しいパスを発行して登録メールに通知します。画面には表示しません。再設定すると、他の端末の管理者ログインは解除されます。', 'resetPowerPass', '再設定する');
+    if (S.dialog === 'deleteTeam') {
+      var dt = S.admin.power && S.admin.power.teams.filter(function (t) { return t.id === S.deleteTeamId; })[0];
+      return viewConfirmSheet((dt ? dt.name : '') + 'チームを削除しますか?', 'メンバーは名簿から外れ、割り振り・チームパスの設定も消えます。過去の出欠・コメントは残ります。元に戻せません。', 'deleteTeam', '削除する');
+    }
     if (S.dialog === 'removeMember') {
       var target = S.admin.team && S.admin.team.members.filter(function (m) { return m.id === S.removeMemberId; })[0];
       return viewConfirmSheet((target ? target.name : '') + 'さんを削除しますか?', '名簿と集計から外れます。過去の出欠とコメントは残ります。', 'removeMember', '削除する');
@@ -941,7 +974,7 @@
     call(name, [token()].concat(extra || []), function (result) {
       if (handleResult(result, message, opts.keep) && opts.clear) clearDrafts(opts.clear);
       if (result.ok && opts.clear) render();
-    });
+    }, opts.busy);
   }
 
   function teamIdForAdmin() {
@@ -981,11 +1014,11 @@
   }
   function scrollTop_() { var m = document.getElementById('mainScroll'); if (m) m.scrollTop = 0; }
   // 週の状態操作(締切・再開・解除)。割当の map は保持し、boot と表示だけ更新する
-  function allocStateOp(apiName, message) {
+  function allocStateOp(apiName, message, label) {
     call(apiName, [token(), S.boot.next], function (result) {
       if (result.ok) { setBoot(result.boot); render(); toast(message); }
       else handleResult(result);
-    });
+    }, label);
   }
 
   // メンバーのカレンダー(月表示)。予定は boot に含まれる。開くたびに最新を取り直す
@@ -1220,7 +1253,7 @@
         } else if (result.code === 'CONFLICT') {
           toast(result.message); openAlloc();
         } else { handleResult(result); }
-      });
+      }, '保存中…');
     },
     allocCopyLine: function () {
       var text = S.alloc.lineText || '';
@@ -1232,11 +1265,11 @@
       call('apiResetDraft', [token(), S.boot.next], function (result) {
         if (result.ok) { setBoot(result.boot); initAlloc(); render(); toast('自動で割り振りました'); }
         else handleResult(result);
-      });
+      }, '割当中…');
     },
-    allocClose: function () { allocStateOp('apiCloseWeek', '回答を締め切りました'); },
-    allocReopen: function () { allocStateOp('apiReopenWeek', '回答の受付を再開しました'); },
-    allocUnconfirm: function () { allocStateOp('apiUnconfirm', '確定を解除しました'); },
+    allocClose: function () { allocStateOp('apiCloseWeek', '回答を締め切りました', '更新中…'); },
+    allocReopen: function () { allocStateOp('apiReopenWeek', '回答の受付を再開しました', '更新中…'); },
+    allocUnconfirm: function () { allocStateOp('apiUnconfirm', '確定を解除しました', '更新中…'); },
 
     // カレンダー(月表示)
     calPick: function (v) { S.cal.sel = v; render(); },
@@ -1269,8 +1302,8 @@
           S.cal.sheet = null; S.cal.form = null;
         });
       };
-      if (S.cal.mode === 'admin') call('apiSaveEvent', [token(), f], onDone);
-      else call('apiMemberSaveEvent', [S.me, f], onDone);
+      if (S.cal.mode === 'admin') call('apiSaveEvent', [token(), f], onDone, '登録中…');
+      else call('apiMemberSaveEvent', [S.me, f], onDone, '登録中…');
     },
     askDeleteEvent: function () { S.cal.deleteId = S.cal.form.id; S.cal.confirmDel = true; render(); },
     cancelDeleteEvent: function () { S.cal.confirmDel = false; S.cal.deleteId = null; render(); },
@@ -1278,8 +1311,8 @@
       var onDone = function (r) {
         calApply(r, '予定を削除しました', function () { S.cal.confirmDel = false; S.cal.deleteId = null; S.cal.sheet = null; S.cal.form = null; });
       };
-      if (S.cal.mode === 'admin') call('apiDeleteEvent', [token(), S.cal.deleteId], onDone);
-      else call('apiMemberDeleteEvent', [S.me, S.cal.deleteId], onDone);
+      if (S.cal.mode === 'admin') call('apiDeleteEvent', [token(), S.cal.deleteId], onDone, '削除中…');
+      else call('apiMemberDeleteEvent', [S.me, S.cal.deleteId], onDone, '削除中…');
     },
 
     // チーム管理
@@ -1324,15 +1357,21 @@
     toggleRegFold: function () { S.ui.openReg = !S.ui.openReg; render(); },
     addTeam: function () {
       adminCall('apiAddTeam', [draft('p:teamName'), draft('p:teamGymName')],
-        'チームを登録しました', { clear: 'p:team' });
+        'チームを登録しました', { clear: 'p:team', busy: '登録中…' });
+    },
+    askDeleteTeam: function (v) { S.dialog = 'deleteTeam'; S.deleteTeamId = v; render(); },
+    deleteTeam: function () {
+      var id = S.deleteTeamId;
+      S.dialog = null; S.deleteTeamId = null; render();
+      adminCall('apiDeleteTeam', [id], 'チームを削除しました', { busy: '削除中…' });
     },
     setTeamPass: function () {
       var teams = S.admin.power.teams;
-      adminCall('apiSetTeamPass', [draft('p:passTeam', teams[0] && teams[0].id), draft('p:passNew')], 'チームパスを設定しました', { clear: 'p:passNew' });
+      adminCall('apiSetTeamPass', [draft('p:passTeam', teams[0] && teams[0].id), draft('p:passNew')], 'チームパスを設定しました', { clear: 'p:passNew', busy: '設定中…' });
     },
     askRandomPass: function () { S.dialog = 'randomPass'; render(); },
     randomizeTeamPasses: function () {
-      adminCall('apiRandomizeTeamPasses', [], '未設定のチームにパスを割り当てました');
+      adminCall('apiRandomizeTeamPasses', [], '未設定のチームにパスを割り当てました', { busy: '設定中…' });
     },
     toggleAllocDuty: function (v) {
       var t = (S.admin.power.teams || []).filter(function (x) { return x.id === v; })[0];
@@ -1348,7 +1387,7 @@
           store.set(KEY.auth, JSON.stringify({ token: result.token, role: 'power', teamId: null, expires: result.expires }));
         }
         handleResult(result, '新しい管理者パスをメールに送信しました');
-      });
+      }, '再設定中…');
     }
   };
 
@@ -1374,6 +1413,8 @@
   document.addEventListener('change', function (event) {
     var date = event.target.getAttribute('data-note');
     if (date) saveNote(date, event.target.value.trim());
+    // 管理者のチーム切り替え(プルダウン)
+    if (event.target.getAttribute('data-pick') === 'team') { actions.pickTeam(event.target.value); return; }
     // カレンダーの予定フォーム(セレクト・日付)は変更時に再描画する
     var ef = event.target.getAttribute('data-evfield');
     if (ef && S.cal.form) {
