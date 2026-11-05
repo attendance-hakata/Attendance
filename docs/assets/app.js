@@ -31,6 +31,7 @@
     dayDate: null,
     removeMemberId: null,
     renameMemberId: null,
+    editLeave: false,  // メンバー編集シートの休部ステータス(ローカル)
     deleteTeamId: null,
     drafts: {},        // 入力途中の文字列。再描画しても消えないよう保持する
     passLength: 4,
@@ -90,11 +91,11 @@
     if (!pill) {
       pill = document.createElement('div');
       pill.id = 'busyPill';
-      pill.className = 'busy-pill';
+      pill.className = 'busy-overlay';
       document.body.appendChild(pill);
     }
     if (S.pendingWrites > 0 && S.busyLabel) {
-      pill.innerHTML = '<span class="busy-spin"></span>' + esc(S.busyLabel);
+      pill.innerHTML = '<div class="busy-box"><span class="busy-spin"></span><span class="busy-text">' + esc(S.busyLabel) + '</span></div>';
       pill.hidden = false;
     } else {
       pill.hidden = true;
@@ -713,7 +714,7 @@
     var team = S.admin.team;
     var who = auth();
     var html = '<div class="admin-title">' + (who && who.role === 'power' ? '<div class="label">管理者</div>' : '') +
-      '<div class="title-sm">チーム管理<span class="acc">.</span></div></div>';
+      '<div class="title-sm">メンバー管理<span class="acc">.</span></div></div>';
     if (!team) return html + adminLoading();
 
     if (S.admin.teamList) {
@@ -738,7 +739,7 @@
       html += '<div class="list-row member-row' + (m.onLeave ? ' is-leave' : '') + '">' +
         '<button class="member-name" data-a="toggleLeave" data-v="' + esc(m.id) + '" title="タップで在籍／休部を切り替え"><span class="mnm">' + esc(m.name) + '</span>' +
         '<span class="mstatus ' + (m.onLeave ? 'leave' : 'active') + '">' + (m.onLeave ? '休部' : '在籍') + '</span></button>' +
-        '<button class="link" data-a="askRenameMember" data-v="' + esc(m.id) + '">編集</button>' +
+        '<button class="link" data-a="askEditMember" data-v="' + esc(m.id) + '">編集</button>' +
         '<button class="link danger" data-a="askRemoveMember" data-v="' + esc(m.id) + '">削除</button></div>';
     });
     html += '<div class="note-line">名前をタップすると在籍／休部を切り替えられます。「編集」で名前を変更できます。</div>';
@@ -746,7 +747,10 @@
 
     html += '<div class="section"><div class="section-head"><span class="label">連絡先(他チームの担当者にも見えます)</span></div>';
     [['rep', '代表', team.rep], ['vice', '副代表', team.vice]].forEach(function (r) {
-      html += '<div class="field-label">' + r[1] + '</div><div class="form-row">' + textInput('t:' + r[0] + ':name', r[2].name, '名前', 'text', 30) + '</div>' +
+      // 名前はメンバーからプルダウンで選ぶ。名簿にない既存の値は（名簿外）として残す
+      var opts = [['', '（未設定）']].concat(team.members.map(function (m) { return [m.name, m.name]; }));
+      if (r[2].name && !team.members.some(function (m) { return m.name === r[2].name; })) opts.push([r[2].name, r[2].name + '（名簿外）']);
+      html += '<div class="field-label">' + r[1] + '</div><div class="form-row">' + selectInput('t:' + r[0] + ':name', opts, r[2].name) + '</div>' +
         '<div class="form-row">' + textInput('t:' + r[0] + ':contact', r[2].contact, '電話番号、LINE ID など', 'text', 100) +
         '<button class="sub-btn" data-a="saveContact" data-v="' + r[0] + '">保存</button></div>';
     });
@@ -837,7 +841,7 @@
   function viewTabs(isAdmin) {
     var who = auth();
     var tabs = isAdmin
-      ? (canAllocate() ? [['alloc', '割り振り']] : []).concat([['calendar', 'カレンダー'], ['contacts', '連絡先'], ['team', 'チーム管理']])
+      ? (canAllocate() ? [['alloc', '割り振り']] : []).concat([['calendar', 'カレンダー'], ['team', 'メンバー管理'], ['contacts', '連絡先']])
       : [['home', 'ホーム'], ['answer', '出欠'], ['calendar', 'カレンダー'], ['admin', '管理画面']];
     if (isAdmin && who && who.role === 'power') tabs.push(['power', '管理者']);
     var cols = ' style="grid-template-columns:repeat(' + tabs.length + ',1fr)"';
@@ -864,13 +868,17 @@
       '<button class="link" data-a="closeDialog">やめる</button></div>';
   }
 
-  function viewRenameSheet() {
+  function viewMemberEditSheet() {
     var m = S.admin.team && S.admin.team.members.filter(function (x) { return x.id === S.renameMemberId; })[0];
     var cur = m ? m.name : '';
-    return '<div class="scrim" data-a="closeDialog"><div class="sheet" data-a="noop"><h3>名前を変更</h3>' +
-      '<div class="form-row">' + textInput('rename', cur, '名前', 'text', 30) + '</div>' +
+    var leave = !!S.editLeave;
+    return '<div class="scrim" data-a="closeDialog"><div class="sheet" data-a="noop"><h3>メンバーを編集</h3>' +
+      '<div class="field-label">名前</div><div class="form-row">' + textInput('rename', cur, '名前', 'text', 30) + '</div>' +
+      '<div class="field-label">ステータス</div>' +
+      '<div class="seg"><button class="seg-btn' + (!leave ? ' on' : '') + '" data-a="editStatus" data-v="active">在籍</button>' +
+      '<button class="seg-btn' + (leave ? ' on' : '') + '" data-a="editStatus" data-v="leave">休部</button></div>' +
       '<div class="conf-btns"><button class="ghost" style="height:56px" data-a="closeDialog">やめる</button>' +
-      '<button class="go" data-a="renameMember">保存</button></div></div></div>';
+      '<button class="go" data-a="saveMemberEdit">保存</button></div></div></div>';
   }
 
   function viewConfirmSheet(title, note, action, label) {
@@ -895,7 +903,7 @@
       var dt = S.admin.power && S.admin.power.teams.filter(function (t) { return t.id === S.deleteTeamId; })[0];
       return viewConfirmSheet((dt ? dt.name : '') + 'チームを削除しますか?', 'メンバーは名簿から外れ、割り振り・チームパスの設定も消えます。過去の出欠・コメントは残ります。元に戻せません。', 'deleteTeam', '削除する');
     }
-    if (S.dialog === 'renameMember') return viewRenameSheet();
+    if (S.dialog === 'editMember') return viewMemberEditSheet();
     if (S.dialog === 'removeMember') {
       var target = S.admin.team && S.admin.team.members.filter(function (m) { return m.id === S.removeMemberId; })[0];
       return viewConfirmSheet((target ? target.name : '') + 'さんを削除しますか?', '名簿と集計から外れます。過去の出欠とコメントは残ります。', 'removeMember', '削除する');
@@ -1353,9 +1361,34 @@
       var on = !(m && m.onLeave);
       adminCall('apiSetMemberLeave', [S.admin.team.teamId, v, on], on ? '休部にしました' : '在籍に戻しました', { busy: '更新中…' });
     },
-    askRenameMember: function (v) { S.renameMemberId = v; delete S.drafts['rename']; S.dialog = 'renameMember'; render(); },
-    renameMember: function () {
-      adminCall('apiRenameMember', [S.admin.team.teamId, S.renameMemberId, draft('rename', '')], 'メンバー名を変更しました', { clear: 'rename', busy: '保存中…' });
+    askEditMember: function (v) {
+      var m = (S.admin.team && S.admin.team.members || []).filter(function (x) { return x.id === v; })[0];
+      S.renameMemberId = v;
+      S.editLeave = !!(m && m.onLeave);
+      delete S.drafts['rename'];
+      S.dialog = 'editMember';
+      render();
+    },
+    editStatus: function (v) { S.editLeave = (v === 'leave'); render(); },
+    saveMemberEdit: function () {
+      var team = S.admin.team, id = S.renameMemberId;
+      var m = team.members.filter(function (x) { return x.id === id; })[0];
+      var newName = String(draft('rename', m ? m.name : '')).trim();
+      if (!newName) { toast('名前を入力してください'); return; }
+      var wantLeave = !!S.editLeave;
+      var needLeave = m && (!!m.onLeave !== wantLeave);
+      S.dialog = null; clearDrafts('rename'); render();
+      // まず名前、続けて(必要なら)休部ステータスを保存する
+      call('apiRenameMember', [token(), team.teamId, id, newName], function (r) {
+        if (!r.ok) { handleResult(r); return; }
+        if (needLeave) {
+          call('apiSetMemberLeave', [token(), team.teamId, id, wantLeave], function (r2) {
+            handleResult(r2, 'メンバーを更新しました');
+          }, '保存中…');
+        } else {
+          handleResult(r, 'メンバーを更新しました');
+        }
+      }, '保存中…');
     },
     removeMember: function () {
       var id = S.removeMemberId;

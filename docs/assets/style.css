@@ -38,11 +38,18 @@ a{color:inherit}
 .busy{position:fixed;top:0;left:0;right:0;height:2px;background:var(--acc);z-index:30;animation:busy 1s ease-in-out infinite alternate}
 .busy[hidden]{display:none}
 @keyframes busy{from{opacity:.25}to{opacity:1}}
-/* 処理中のラベル付きインジケータ(登録中…・割当中… など) */
-.busy-pill{position:fixed;left:50%;top:24px;transform:translateX(-50%);z-index:40;display:flex;align-items:center;gap:9px;padding:10px 18px;background:var(--sf);border:1px solid var(--rule);font-size:13px;font-weight:600;color:var(--tx);box-shadow:0 6px 20px rgba(0,0,0,.45)}
-.busy-pill[hidden]{display:none}
-.busy-spin{width:14px;height:14px;border:2px solid var(--rule);border-top-color:var(--acc);border-radius:50%;animation:busy-spin .7s linear infinite}
+/* 処理中インジケータ(登録中…・割当中… など)。画面中央にアクセント色で表示 */
+.busy-overlay{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(14,15,13,.55);backdrop-filter:blur(1px)}
+.busy-overlay[hidden]{display:none}
+.busy-box{display:flex;flex-direction:column;align-items:center;gap:14px;padding:26px 34px;background:var(--sf);border:1px solid var(--acc);box-shadow:0 12px 40px rgba(0,0,0,.6),0 0 28px rgba(200,240,49,.22)}
+.busy-text{font-size:14px;font-weight:700;color:var(--acc);letter-spacing:.02em}
+.busy-spin{width:34px;height:34px;border:3px solid rgba(200,240,49,.22);border-top-color:var(--acc);border-radius:50%;animation:busy-spin .7s linear infinite}
 @keyframes busy-spin{to{transform:rotate(360deg)}}
+/* ステータス切替(在籍/休部) */
+.seg{display:flex;gap:0;margin-bottom:6px}
+.seg-btn{flex:1;height:44px;border:1px solid var(--rule);font-size:14px;font-weight:600;color:var(--mute)}
+.seg-btn.on{background:var(--acc);border-color:var(--acc);color:var(--onacc)}
+.seg-btn:first-child{border-right:0}
 
 /* 共通部品 */
 .title{font-size:40px;font-weight:700;letter-spacing:-.04em}
