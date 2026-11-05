@@ -554,17 +554,12 @@
     var a = S.boot.allocation;
     return calTargetDates(f).indexOf(S.boot.next) >= 0 && !!a && !a.dayOff;
   }
-  // 予定の登録者名: 管理カレンダーはトークンの表示名、メンバーカレンダーは本人名
+  // 予定の登録者名: どのチームの誰が登録したかを「チーム名・氏名」で表す(操作した本人)
   function eventBy() {
-    if (S.cal.mode === 'admin') {
-      var w = auth();
-      if (!w) return '';
-      if (w.role === 'power') return '管理者';
-      var t = teamOf(w.teamId);
-      return t ? t.name : '';
-    }
     var m = me();
-    return m ? m.name : '';
+    if (!m) return '';
+    var t = teamOf(m.teamId);
+    return (t ? t.name + '・' : '') + m.name;
   }
   function calCannotSave(f) { return !calTargetDates(f).length || calBlocked(f) || (f.type === 'other' && !String(f.memo).trim()) || (f.type === 'closed' && !f.gym); }
   function calSheetWarn(f) {
@@ -655,9 +650,17 @@
     }
     var teamField = '';
     if (f.type === 'rest') {
-      teamField = '<label class="cfld"><span>チーム</span><select data-evfield="team">'
-        + (S.boot.teams || []).map(function (t) { return '<option value="' + t.id + '"' + (t.id === f.team ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('')
-        + '</select><span class="chint ' + (f.team === myTeamId() ? '' : 'warn') + '">' + (f.team === myTeamId() ? '自分のチームを初期表示しています' : '他チームの休みを代わりに登録します') + '</span></label>';
+      var isPower = auth() && auth().role === 'power';
+      if (isPower) {
+        // 管理者は全チームから選べる
+        teamField = '<label class="cfld"><span>チーム</span><select data-evfield="team">'
+          + (S.boot.teams || []).map(function (t) { return '<option value="' + t.id + '"' + (t.id === f.team ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('')
+          + '</select><span class="chint">全チームから選べます</span></label>';
+      } else {
+        // 各チーム代表は自分のチームに固定(他チームは選べない)
+        var tn = (teamOf(myTeamId()) || {}).name || '';
+        teamField = '<label class="cfld"><span>チーム</span><div class="evby">' + esc(tn) + '</div><span class="chint">自分のチームの休みを登録します</span></label>';
+      }
     }
     var reasonField = f.type === 'other' ? '' : '<label class="cfld"><span>理由</span><select data-evfield="reason">'
       + CAL_REASONS[f.type].map(function (r) { return '<option' + (r === f.reason ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select></label>';
@@ -1325,14 +1328,17 @@
       var f = S.cal.form;
       if (calCannotSave(f)) return;
       var isEdit = !!f.id;
+      // フォームの gym/team を API の gymId/teamId に合わせて送る
+      var payload = { id: f.id, type: f.type, date: f.date, gymId: f.gym, teamId: f.team, reason: f.reason, memo: f.memo };
       var onDone = function (r) {
         calApply(r, isEdit ? '予定を修正しました' : '予定を登録しました', function () {
           if (f.date) { var dd = calParse(f.date); S.cal.ym = [dd.getFullYear(), dd.getMonth()]; S.cal.sel = f.date; }
           S.cal.sheet = null; S.cal.form = null;
         });
       };
-      if (S.cal.mode === 'admin') call('apiSaveEvent', [token(), f], onDone, '登録中…');
-      else call('apiMemberSaveEvent', [S.me, f], onDone, '登録中…');
+      // 登録者(本人=S.me)を渡して「チーム名・氏名」で記録する
+      if (S.cal.mode === 'admin') call('apiSaveEvent', [token(), payload, S.me], onDone, '登録中…');
+      else call('apiMemberSaveEvent', [S.me, payload], onDone, '登録中…');
     },
     askDeleteEvent: function () { S.cal.deleteId = S.cal.form.id; S.cal.confirmDel = true; render(); },
     cancelDeleteEvent: function () { S.cal.confirmDel = false; S.cal.deleteId = null; render(); },
