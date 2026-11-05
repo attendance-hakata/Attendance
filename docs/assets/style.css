@@ -45,6 +45,17 @@ a{color:inherit}
 .busy-text{font-size:14px;font-weight:700;color:var(--acc);letter-spacing:.02em}
 .busy-spin{width:34px;height:34px;border:3px solid rgba(200,240,49,.22);border-top-color:var(--acc);border-radius:50%;animation:busy-spin .7s linear infinite}
 @keyframes busy-spin{to{transform:rotate(360deg)}}
+/* 連絡先の値(種別アイコン＋タップ動作) */
+.cval{display:inline-flex;align-items:center;gap:7px;max-width:100%;color:var(--acc);font-weight:600;text-decoration:none;word-break:break-all;text-align:left}
+.cval .cicon{flex:none;color:var(--acc)}
+.cval.line{color:var(--blue)}
+.cval.line .cicon{color:var(--blue)}
+.cval-copy{flex:none;font-family:var(--mono);font-size:10px;color:var(--mute);border:1px solid var(--rule);padding:1px 5px}
+/* 今週の予定(ホーム) */
+.week-notes{margin:14px 0 4px;padding:12px 14px;border:1px solid var(--rule)}
+.wn-head{font-family:var(--mono);font-size:11px;color:var(--mute);margin-bottom:8px}
+.wn-item{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:14px;font-weight:600}
+.wn-ttl{overflow-wrap:anywhere}
 /* ステータス切替(在籍/休部) */
 .seg{display:flex;gap:0;margin-bottom:6px}
 .seg-btn{flex:1;height:44px;border:1px solid var(--rule);font-size:14px;font-weight:600;color:var(--mute)}

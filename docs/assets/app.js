@@ -43,11 +43,12 @@
     busyLabel: '',     // 処理中インジケータの文言(登録中… など)
     error: null,
     revealPass: {},    // 管理者ページで番号を表示しているチーム
-    ui: { openReg: false, openPower: false },   // 管理者ページの折りたたみ(チーム登録・管理者パス)
+    ui: { openReg: false, openPower: false, openGym: false },   // 管理者ページの折りたたみ(チーム登録・管理者パス・体育館マスタ)
+    gymEditId: null,
     // 管理画面のデータ。連絡先やパスを含むので端末には保存しない
     admin: { calendar: null, contacts: null, team: null, teamList: null, teamId: null, power: null },
     // メンバーのカレンダー(月表示)の状態
-    cal: { mode: 'member', ym: null, sel: '', filters: { assign: true, closed: true, rest: true, other: true }, sheet: null, form: null, confirmDel: false, deleteId: null },
+    cal: { mode: 'member', ym: null, sel: '', filters: { assign: true, closed: true, rest: true, other: true }, sheet: null, form: null, confirmDel: false, confirmClosed: false, deleteId: null },
     // 割り振り画面(モックアップ準拠)の状態。map は画面内の割当、決定でまとめて保存
     alloc: { screen: 'pick', gym: '', map: {}, pending: null, version: 0, lineText: '', copied: false }
   };
@@ -71,6 +72,31 @@
 
   function mapUrl(gym) {
     return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(gym.address || gym.name);
+  }
+
+  // 連絡先の種別を値から判定する(メール / 電話 / LINE等)
+  function contactKind(v) {
+    var s = String(v || '').trim();
+    if (!s) return null;
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return 'mail';
+    var digits = s.replace(/[\s\-()+]/g, '');
+    if (/^\d{7,}$/.test(digits)) return 'tel';
+    return 'line';
+  }
+  function contactHref(v) {
+    var k = contactKind(v);
+    if (k === 'tel') return 'tel:' + String(v).replace(/[\s\-()]/g, '');
+    if (k === 'mail') return 'mailto:' + String(v).trim();
+    return '';
+  }
+  var CONTACT_LABEL = { tel: '電話', mail: 'メール', line: 'LINE/ID' };
+  function contactIcon(kind) {
+    var p = {
+      tel: '<path d="M4 4h4l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v4a16 16 0 0 1-16-16z"/>',
+      mail: '<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 6l9 7 9-7"/>',
+      line: '<path d="M4 4h16v10H9l-4 4v-4H4z"/>'
+    }[kind] || '';
+    return '<svg class="cicon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
   }
 
   function timeText(item) {
@@ -249,6 +275,16 @@
         '<a href="' + esc(mapUrl(gym)) + '" target="_blank" rel="noopener">地図を開く ↗</a></div>';
     } else {
       html += '<div class="pending"><span class="label-w">今週の体育館</span><span>土曜までに決まり、LINEでお知らせします。</span></div>';
+    }
+
+    // 今週(次の日曜)の予定サマリ: 使用不可・チーム休み・その他を手早く確認できる
+    var wn = calEvents().filter(function (e) { return e.date === b.next; });
+    if (wn.length) {
+      html += '<div class="week-notes"><div class="wn-head">今週の予定</div>' + wn.map(function (e) {
+        var ds = calDescribe(e), col = CAL_TYPES[e.type].color;
+        return '<div class="wn-item"><span class="ctag" style="border-color:' + col + ';color:' + col + '">' + CAL_TYPES[e.type].label + '</span>' +
+          '<span class="wn-ttl">' + esc(ds.title) + '</span></div>';
+      }).join('') + '</div>';
     }
 
     if (!dayOff) html += viewTeamAttendance(team);
@@ -554,6 +590,13 @@
     var a = S.boot.allocation;
     return calTargetDates(f).indexOf(S.boot.next) >= 0 && !!a && !a.dayOff;
   }
+  // 他チームの「チーム休み」は、管理者以外は編集できない(閲覧のみ)
+  function canEditEvent(e) {
+    var w = auth();
+    if (w && w.role === 'power') return true;
+    if (e.type !== 'rest') return true;
+    return e.teamId === myTeamId();
+  }
   // 予定の登録者名: どのチームの誰が登録したかを「チーム名・氏名」で表す(操作した本人)
   function eventBy() {
     var m = me();
@@ -614,7 +657,7 @@
       list += '<div class="cev"><div class="cbody"><span class="ctag" style="border-color:' + col + ';color:' + col + '">' + CAL_TYPES[e.type].label + '</span>'
         + '<span class="cttl">' + esc(ds.title) + '</span>' + (ds.sub ? '<span class="csb">' + esc(ds.sub) + '</span>' : '')
         + (e.by ? '<span class="cby">登録：' + esc(e.by) + '</span>' : '') + '</div>'
-        + '<button class="cedit" data-a="calEdit" data-v="' + esc(e.id) + '">編集</button></div>';
+        + (canEditEvent(e) ? '<button class="cedit" data-a="calEdit" data-v="' + esc(e.id) + '">編集</button>' : '') + '</div>';
     });
     if (!list) list = '<div class="cempty">この日の予定はありません</div>';
 
@@ -690,12 +733,15 @@
   }
 
   // ---- 連絡先 ----
+  // 連絡先の値を、種別アイコン付きで表示する。電話・メールはタップで発信/送信、LINE/ID等はタップでコピー
   function contactValue(value) {
-    var text = String(value || '');
-    if (/^[\d\-+() ]{9,}$/.test(text)) {
-      return '<a href="tel:' + esc(text.replace(/[^\d+]/g, '')) + '">' + esc(text) + '</a>';
-    }
-    return '<span class="val">' + esc(text) + '</span>';
+    var text = String(value || '').trim();
+    if (!text) return '<span class="val mute">—</span>';
+    var kind = contactKind(text);
+    var inner = contactIcon(kind) + '<span class="cval-text">' + esc(text) + '</span>';
+    var href = contactHref(text);
+    if (href) return '<a class="cval ' + kind + '" href="' + esc(href) + '">' + inner + '</a>';
+    return '<button class="cval ' + kind + '" data-a="copyContact" data-v="' + esc(text) + '">' + inner + '<span class="cval-copy">コピー</span></button>';
   }
 
   function viewContacts() {
@@ -753,9 +799,11 @@
       // 名前はメンバーからプルダウンで選ぶ。名簿にない既存の値は（名簿外）として残す
       var opts = [['', '（未設定）']].concat(team.members.map(function (m) { return [m.name, m.name]; }));
       if (r[2].name && !team.members.some(function (m) { return m.name === r[2].name; })) opts.push([r[2].name, r[2].name + '（名簿外）']);
+      var ck = contactKind(r[2].contact);
       html += '<div class="field-label">' + r[1] + '</div><div class="form-row">' + selectInput('t:' + r[0] + ':name', opts, r[2].name) + '</div>' +
         '<div class="form-row">' + textInput('t:' + r[0] + ':contact', r[2].contact, '電話番号、LINE ID など', 'text', 100) +
-        '<button class="sub-btn" data-a="saveContact" data-v="' + r[0] + '">保存</button></div>';
+        '<button class="sub-btn" data-a="saveContact" data-v="' + r[0] + '">保存</button></div>' +
+        (ck ? '<div class="chint">判定: ' + contactIcon(ck) + ' ' + CONTACT_LABEL[ck] + '（保存後に反映）</div>' : '');
     });
     html += '</div>';
 
@@ -837,6 +885,21 @@
       html += '<div class="note-line">削除するとメンバーは名簿から外れます。過去の記録は残ります。</div>';
     }
     html += '</div>';
+
+    // ⑤ 体育館マスタ(最下部・折りたたみ・既定で隠す)
+    html += '<div class="section"><button class="fold-head" data-a="toggleGymFold" aria-expanded="' + S.ui.openGym + '"><span class="label">体育館マスタ</span><i>' + (S.ui.openGym ? '▲' : '▼') + '</i></button>';
+    if (S.ui.openGym) {
+      var usedGym = {};
+      (S.boot.teams || []).forEach(function (t) { if (t.homeGymId) usedGym[t.homeGymId] = true; });
+      (data.gyms || []).forEach(function (g) {
+        html += '<div class="list-row"><span class="pass-name">' + esc(g.name) + '</span>' +
+          (usedGym[g.id] ? '<span class="duty-state">使用中</span>' : '') +
+          '<button class="link" data-a="askRenameGym" data-v="' + esc(g.id) + '">名称変更</button>' +
+          (usedGym[g.id] ? '' : '<button class="link danger" data-a="askDeleteGym" data-v="' + esc(g.id) + '">削除</button>') + '</div>';
+      });
+      html += '<div class="note-line">チームのホームになっている体育館は、ホームを外すまで削除できません。</div>';
+    }
+    html += '</div>';
     return html;
   }
 
@@ -871,6 +934,15 @@
       '<button class="link" data-a="closeDialog">やめる</button></div>';
   }
 
+  function viewGymRenameSheet() {
+    var g = S.admin.power && (S.admin.power.gyms || []).filter(function (x) { return x.id === S.gymEditId; })[0];
+    var cur = g ? g.name : '';
+    return '<div class="scrim" data-a="closeDialog"><div class="sheet" data-a="noop"><h3>体育館名を変更</h3>' +
+      '<div class="form-row">' + textInput('gymName', cur, '体育館名', 'text', 40) + '</div>' +
+      '<div class="conf-btns"><button class="ghost" style="height:56px" data-a="closeDialog">やめる</button>' +
+      '<button class="go" data-a="renameGym">保存</button></div></div></div>';
+  }
+
   function viewMemberEditSheet() {
     var m = S.admin.team && S.admin.team.members.filter(function (x) { return x.id === S.renameMemberId; })[0];
     var cur = m ? m.name : '';
@@ -893,6 +965,7 @@
 
   function viewDialog(member, team) {
     if (S.cal && S.cal.confirmDel) return viewEventDelete();
+    if (S.cal && S.cal.confirmClosed) return viewConfirmSheet('この体育館を使用不可にしますか?', '選んだ日は、この体育館が全チームの割り振りから外れます。みんなのカレンダーに反映されます。', 'doSaveEvent', '使用不可にする');
     if (S.screen === 'calendar' && S.cal && S.cal.sheet) return viewEventSheet();
     if (S.dialog === 'user') {
       return '<div class="scrim" data-a="closeDialog"><div class="sheet sheet-user" data-a="noop"><h3>' + esc(member.name) + 'さん / ' + esc(team.name) + '</h3>' +
@@ -907,6 +980,11 @@
       return viewConfirmSheet((dt ? dt.name : '') + 'チームを削除しますか?', 'メンバーは名簿から外れ、割り振り・チームパスの設定も消えます。過去の出欠・コメントは残ります。元に戻せません。', 'deleteTeam', '削除する');
     }
     if (S.dialog === 'editMember') return viewMemberEditSheet();
+    if (S.dialog === 'renameGym') return viewGymRenameSheet();
+    if (S.dialog === 'deleteGym') {
+      var dg = S.admin.power && (S.admin.power.gyms || []).filter(function (g) { return g.id === S.gymEditId; })[0];
+      return viewConfirmSheet((dg ? dg.name : '') + 'を削除しますか?', 'この体育館をマスタから外します。過去の記録は残ります。', 'deleteGym', '削除する');
+    }
     if (S.dialog === 'removeMember') {
       var target = S.admin.team && S.admin.team.members.filter(function (m) { return m.id === S.removeMemberId; })[0];
       return viewConfirmSheet((target ? target.name : '') + 'さんを削除しますか?', '名簿と集計から外れます。過去の出欠とコメントは残ります。', 'removeMember', '削除する');
@@ -1156,6 +1234,7 @@
       S.code = '';
       S.codeMsg = '';
       S.codeErr = false;
+      if (S.cal) S.cal.confirmClosed = false;
       clearDrafts('d:');
       render();
     },
@@ -1327,6 +1406,14 @@
     saveEvent: function () {
       var f = S.cal.form;
       if (calCannotSave(f)) return;
+      // メンバーが体育館を使用不可にするときは、全チームに影響するため確認する
+      if (S.cal.mode === 'member' && f.type === 'closed' && !f.id) { S.cal.confirmClosed = true; render(); return; }
+      actions.doSaveEvent();
+    },
+    cancelClosed: function () { S.cal.confirmClosed = false; render(); },
+    doSaveEvent: function () {
+      S.cal.confirmClosed = false;
+      var f = S.cal.form;
       var isEdit = !!f.id;
       // フォームの gym/team を API の gymId/teamId に合わせて送る
       var payload = { id: f.id, type: f.type, date: f.date, gymId: f.gym, teamId: f.team, reason: f.reason, memo: f.memo };
@@ -1415,10 +1502,27 @@
       delete S.drafts['t:end'];
     },
 
+    copyContact: function (v) {
+      var done = function () { toast('コピーしました'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(done, done);
+      else done();
+    },
+
     // 管理者ページ
     toggleReveal: function (v) { S.revealPass[v] = !S.revealPass[v]; render(); },
     togglePowerFold: function () { S.ui.openPower = !S.ui.openPower; render(); },
     toggleRegFold: function () { S.ui.openReg = !S.ui.openReg; render(); },
+    toggleGymFold: function () { S.ui.openGym = !S.ui.openGym; render(); },
+    askRenameGym: function (v) { S.gymEditId = v; delete S.drafts['gymName']; S.dialog = 'renameGym'; render(); },
+    renameGym: function () {
+      adminCall('apiRenameGym', [S.gymEditId, draft('gymName', '')], '体育館名を変更しました', { clear: 'gymName', busy: '保存中…' });
+    },
+    askDeleteGym: function (v) { S.gymEditId = v; S.dialog = 'deleteGym'; render(); },
+    deleteGym: function () {
+      var id = S.gymEditId;
+      S.dialog = null; S.gymEditId = null; render();
+      adminCall('apiDeleteGym', [id], '体育館を削除しました', { busy: '削除中…' });
+    },
     addTeam: function () {
       adminCall('apiAddTeam', [draft('p:teamName'), draft('p:teamGymName')],
         'チームを登録しました', { clear: 'p:team', busy: '登録中…' });
