@@ -598,10 +598,10 @@
       + '<button class="cthis" data-a="calThis">今月</button>'
       + '<button class="carrow" data-a="calNext">›</button></div></div>'
       + '<div class="cfilters">' + chips + '</div>'
-      + '<button class="caddwide" data-a="calNew"><b>＋</b>予定を登録</button>'
       + '<div class="cwk"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div>'
       + '<div class="cgrid">' + cells + '</div>'
       + '<div class="cdayhd"><b>' + (sd.getMonth() + 1) + '月' + sd.getDate() + '日（' + CAL_WD[sd.getDay()] + '）</b><span class="label">' + (calIsSun(c.sel) ? '練習日' : '') + '</span></div>'
+      + '<button class="caddwide" data-a="calNew"><b>＋</b>' + (sd.getMonth() + 1) + '月' + sd.getDate() + '日の予定を登録</button>'
       + list
       + '</div>';
   }
