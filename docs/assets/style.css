@@ -293,9 +293,23 @@ select.text-input{padding:0 8px}
 .share-note b{flex:none;font-family:var(--mono);color:var(--acc);font-weight:700}
 .share-note em{font-style:normal;color:var(--acc);font-weight:700}
 .team-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
-.team-chip{width:44px;height:44px;border:1px solid var(--rule);font-family:var(--mono);font-size:14px;color:var(--mute)}
+.team-chip{min-width:44px;height:36px;padding:0 12px;border:1px solid var(--rule);font-size:13px;font-weight:600;color:var(--mute);white-space:nowrap}
 .team-chip.on{background:var(--tx);border-color:var(--tx);color:var(--bg)}
 .team-chip.unset{border-style:dashed}
+
+/* メンバーの休部 */
+.member-row .swx{margin-left:auto}
+.member-row .link{flex:none;margin-left:0}
+.leave-badge{display:inline-block;margin-left:8px;font-family:var(--mono);font-size:10px;color:var(--mute);border:1px solid var(--rule);padding:1px 5px;vertical-align:middle}
+/* 小さめスイッチ(行内) */
+.swx-sm{gap:0}
+.swx-sm .swx-track{width:36px;height:20px}
+.swx-sm .swx-knob{width:16px;height:16px}
+.swx-sm.on .swx-knob{transform:translateX(16px)}
+/* 折りたたみの見出しボタン */
+.fold-head{display:flex;align-items:center;justify-content:space-between;width:100%;padding:4px 0;text-align:left}
+.fold-head i{font-style:normal;font-size:11px;color:var(--mute)}
+.sub-btn.full{width:100%;flex:1}
 
 /* 管理者ページ */
 .letter-input{width:64px}

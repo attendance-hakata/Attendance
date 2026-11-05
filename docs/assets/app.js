@@ -39,6 +39,7 @@
     pendingWrites: 0,
     error: null,
     revealPass: {},    // 管理者ページで番号を表示しているチーム
+    ui: { openReg: false, openPower: false },   // 管理者ページの折りたたみ(チーム登録・管理者パス)
     // 管理画面のデータ。連絡先やパスを含むので端末には保存しない
     admin: { calendar: null, contacts: null, team: null, teamList: null, teamId: null, power: null },
     // メンバーのカレンダー(月表示)の状態
@@ -238,11 +239,15 @@
     b.members.forEach(function (m) {
       if (m.teamId !== team.id) return;
       var a = statuses[m.id];
-      names[a === 'yes' || a === 'no' || a === 'maybe' ? a : 'none'].push(m.name);
+      var answered = a === 'yes' || a === 'no' || a === 'maybe';
+      // 休部は未回答に数えない。回答があればそのまま各欄に加算する
+      if (m.onLeave && !answered) return;
+      names[answered ? a : 'none'].push(m.name);
     });
+    var targetCount = b.members.filter(function (m) { return m.teamId === team.id && !m.onLeave; }).length;
     var rows = [['yes', '出席'], ['no', '欠席'], ['maybe', '未定'], ['none', '未回答']];
     return '<div class="att-list"><div class="att-head"><span class="label">' + esc(team.name) + 'の出欠</span>' +
-      '<span class="label">' + b.members.filter(function (m) { return m.teamId === team.id; }).length + '人</span></div>' +
+      '<span class="label">' + targetCount + '人</span></div>' +
       rows.filter(function (r) { return r[0] !== 'maybe' || names.maybe.length; }).map(function (r) {
         var list = names[r[0]];
         return '<div class="att"><span class="att-label">' + r[1] + '</span><b' + (r[0] === 'yes' ? ' class="acc"' : '') + '>' + list.length + '</b>' +
@@ -690,13 +695,18 @@
 
     if (S.admin.teamList) {
       html += '<div class="team-chips">' + S.admin.teamList.map(function (t) {
-        return '<button class="team-chip' + (t.id === team.teamId ? ' on' : '') + (t.passSet ? '' : ' unset') + '" data-a="pickTeam" data-v="' + esc(t.id) + '">' + esc(teamMark(t.name)) + '</button>';
+        return '<button class="team-chip' + (t.id === team.teamId ? ' on' : '') + (t.passSet ? '' : ' unset') + '" data-a="pickTeam" data-v="' + esc(t.id) + '">' + esc(t.name) + '</button>';
       }).join('') + '</div>';
     }
 
-    html += '<div class="section"><div class="section-head"><span class="label">メンバー</span><span class="label">' + team.members.length + '人</span></div>';
+    var activeCount = team.members.filter(function (m) { return !m.onLeave; }).length;
+    html += '<div class="section"><div class="section-head"><span class="label">メンバー</span><span class="label">' + activeCount + '人' + (activeCount !== team.members.length ? '（休部' + (team.members.length - activeCount) + '）' : '') + '</span></div>';
     team.members.forEach(function (m) {
-      html += '<div class="list-row"><span>' + esc(m.name) + '</span><button class="link" data-a="askRemoveMember" data-v="' + esc(m.id) + '">削除</button></div>';
+      var on = !m.onLeave;
+      html += '<div class="list-row member-row"><span' + (m.onLeave ? ' class="mute"' : '') + '>' + esc(m.name) + (m.onLeave ? '<span class="leave-badge">休部</span>' : '') + '</span>' +
+        '<button class="swx swx-sm' + (on ? ' on' : '') + '" role="switch" aria-checked="' + on + '" data-a="toggleLeave" data-v="' + esc(m.id) + '" title="在籍/休部">' +
+        '<span class="swx-track"><span class="swx-knob"></span></span></button>' +
+        '<button class="link" data-a="askRemoveMember" data-v="' + esc(m.id) + '">削除</button></div>';
     });
     html += '<div class="form-row">' + textInput('t:newMember', '', '名前を入力', 'text', 30) + '<button class="sub-btn" data-a="addMember">追加</button></div></div>';
 
@@ -740,36 +750,46 @@
     var html = '<div class="admin-title"><div class="title-sm">管理者<span class="acc">.</span></div></div>';
     if (!data) return html + adminLoading();
 
-    html += '<div class="section"><div class="section-head"><span class="label">チームの登録</span></div>' +
-      '<div class="form-row">' + textInput('p:teamName', '', 'チーム名', 'text', 30) + '</div>' +
-      '<div class="form-row"><span class="fix letter-input">' + textInput('p:teamLetter', data.nextLetter, '記号', 'text', 2) + '</span>' +
-      selectInput('p:teamGym', [['', 'ホームなし']].concat(data.gyms.map(function (g) { return [g.id, g.name]; })), '') +
-      '<button class="sub-btn" data-a="addTeam">登録</button></div>' +
-      '<div class="note-line">登録後、下のチームパスを設定してください。</div></div>';
-
+    // ① チームパス
+    var unsetCount = data.teams.filter(function (t) { return !t.passSet; }).length;
     html += '<div class="section"><div class="section-head"><span class="label">チームパス</span><span class="label">' + data.teams.length + 'チーム</span></div>';
     data.teams.forEach(function (t) {
       html += '<div class="list-row pass-row"><span class="mark">' + esc(teamMark(t.name)) + '</span><span class="pass-name">' + esc(t.name) + '</span>' + passCell(t) + '</div>';
     });
-    html += '<div class="field-label">設定・変更</div><div class="form-row">' +
+    html += '<div class="form-row"><button class="sub-btn full" data-a="askRandomPass"' + (unsetCount ? '' : ' disabled') + '>未設定のチームにランダム設定' + (unsetCount ? '（' + unsetCount + '）' : '') + '</button></div>';
+    html += '<div class="field-label">個別に設定・変更</div><div class="form-row">' +
       selectInput('p:passTeam', data.teams.map(function (t) { return [t.id, t.name]; }), data.teams[0] && data.teams[0].id) + '</div>' +
       '<div class="form-row">' + numberInput('p:passNew', '数字4桁', 4) + '<button class="sub-btn" data-a="setTeamPass">設定</button></div>' +
       '<div class="note-line">変更すると、そのチームの端末は再入力が必要です。</div></div>';
 
+    // ② 割振担当チーム(スイッチ)
     html += '<div class="section"><div class="section-head"><span class="label">割振担当チーム</span></div>' +
-      '<div class="note-line">割当の作成・変更ができるチームです。管理者は常に操作できます。</div>';
+      '<div class="note-line">ONのチームだけ割り振り機能を使えます。管理者は常に操作できます。</div>';
     data.teams.forEach(function (t) {
       html += '<div class="list-row"><span class="mark' + (t.allocDuty ? ' mine' : '') + '">' + esc(teamMark(t.name)) + '</span>' +
         '<span class="pass-name">' + esc(t.name) + '</span>' +
-        '<span class="duty-state">' + (t.allocDuty ? '割振担当' : '') + '</span>' +
-        '<button class="link" data-a="toggleAllocDuty" data-v="' + esc(t.id) + '">' + (t.allocDuty ? '外す' : '担当にする') + '</button></div>';
+        '<button class="swx swx-sm' + (t.allocDuty ? ' on' : '') + '" role="switch" aria-checked="' + !!t.allocDuty + '" data-a="toggleAllocDuty" data-v="' + esc(t.id) + '" title="割振担当">' +
+        '<span class="swx-track"><span class="swx-knob"></span></span></button></div>';
     });
     html += '</div>';
 
-    html += '<div class="section"><div class="section-head"><span class="label">管理者パス</span></div>' +
-      '<div class="form-row">' + numberInput('p:powerNew', '新しい番号(数字8桁)', 8, 'password') + '</div>' +
-      '<div class="form-row">' + numberInput('p:powerConfirm', 'もう一度入力', 8, 'password') + '<button class="sub-btn" data-a="setPowerPass">変更</button></div>' +
-      '<div class="note-line">番号は表示できないので、必ず控えてください。変更すると、他の端末の管理者ログインは解除されます。</div></div>';
+    // ③ 管理者パス(折りたたみ・既定で隠す)
+    html += '<div class="section"><button class="fold-head" data-a="togglePowerFold" aria-expanded="' + S.ui.openPower + '"><span class="label">管理者パス</span><i>' + (S.ui.openPower ? '▲' : '▼') + '</i></button>';
+    if (S.ui.openPower) {
+      html += '<div class="note-line">新しいパスをランダムで発行し、登録メールに通知します。画面には表示しません。再設定すると、他の端末の管理者ログインは解除されます。</div>' +
+        '<div class="form-row"><button class="sub-btn full" data-a="askResetPower">管理者パスを再設定</button></div>';
+    }
+    html += '</div>';
+
+    // ④ チームの登録(最下部・折りたたみ・既定で隠す)
+    html += '<div class="section"><button class="fold-head" data-a="toggleRegFold" aria-expanded="' + S.ui.openReg + '"><span class="label">チームの登録</span><i>' + (S.ui.openReg ? '▲' : '▼') + '</i></button>';
+    if (S.ui.openReg) {
+      html += '<div class="form-row">' + textInput('p:teamName', '', 'チーム名', 'text', 30) + '</div>' +
+        '<div class="form-row">' + textInput('p:teamGymName', '', 'ホーム体育館名（任意）', 'text', 40) +
+        '<button class="sub-btn" data-a="addTeam">登録</button></div>' +
+        '<div class="note-line">記号はチーム名の頭文字から自動で付きます。体育館がマスタになければ追加されます。登録後、上のチームパスを設定してください。</div>';
+    }
+    html += '</div>';
     return html;
   }
 
@@ -820,6 +840,8 @@
     }
     if (S.dialog === 'code') return viewPass();
     if (S.dialog === 'deleteComment') return viewConfirmSheet('このコメントを削除しますか?', '削除すると元に戻せません。', 'deleteComment', '削除する');
+    if (S.dialog === 'randomPass') return viewConfirmSheet('未設定のチームにパスを割り当てますか?', 'パス未設定のチームに、重複しない4桁をランダムで設定します。設定済みのチームは変わりません。', 'randomizeTeamPasses', '割り当てる');
+    if (S.dialog === 'resetPower') return viewConfirmSheet('管理者パスを再設定しますか?', '新しいパスを発行して登録メールに通知します。画面には表示しません。再設定すると、他の端末の管理者ログインは解除されます。', 'resetPowerPass', '再設定する');
     if (S.dialog === 'removeMember') {
       var target = S.admin.team && S.admin.team.members.filter(function (m) { return m.id === S.removeMemberId; })[0];
       return viewConfirmSheet((target ? target.name : '') + 'さんを削除しますか?', '名簿と集計から外れます。過去の出欠とコメントは残ります。', 'removeMember', '削除する');
@@ -1272,6 +1294,11 @@
       adminCall('apiAddMember', [S.admin.team.teamId, draft('t:newMember')], 'メンバーを追加しました', { clear: 't:newMember' });
     },
     askRemoveMember: function (v) { S.dialog = 'removeMember'; S.removeMemberId = v; render(); },
+    toggleLeave: function (v) {
+      var m = (S.admin.team && S.admin.team.members || []).filter(function (x) { return x.id === v; })[0];
+      var on = !(m && m.onLeave);
+      adminCall('apiSetMemberLeave', [S.admin.team.teamId, v, on], on ? '休部にしました' : '在籍に戻しました');
+    },
     removeMember: function () {
       var id = S.removeMemberId;
       S.dialog = null;
@@ -1293,27 +1320,34 @@
 
     // 管理者ページ
     toggleReveal: function (v) { S.revealPass[v] = !S.revealPass[v]; render(); },
+    togglePowerFold: function () { S.ui.openPower = !S.ui.openPower; render(); },
+    toggleRegFold: function () { S.ui.openReg = !S.ui.openReg; render(); },
     addTeam: function () {
-      adminCall('apiAddTeam', [draft('p:teamName'), draft('p:teamLetter', S.admin.power.nextLetter), draft('p:teamGym')],
+      adminCall('apiAddTeam', [draft('p:teamName'), draft('p:teamGymName')],
         'チームを登録しました', { clear: 'p:team' });
     },
     setTeamPass: function () {
       var teams = S.admin.power.teams;
       adminCall('apiSetTeamPass', [draft('p:passTeam', teams[0] && teams[0].id), draft('p:passNew')], 'チームパスを設定しました', { clear: 'p:passNew' });
     },
+    askRandomPass: function () { S.dialog = 'randomPass'; render(); },
+    randomizeTeamPasses: function () {
+      adminCall('apiRandomizeTeamPasses', [], '未設定のチームにパスを割り当てました');
+    },
     toggleAllocDuty: function (v) {
       var t = (S.admin.power.teams || []).filter(function (x) { return x.id === v; })[0];
       var on = !(t && t.allocDuty);
       adminCall('apiSetAllocDuty', [v, on], on ? '割振担当にしました' : '割振担当を外しました');
     },
-    setPowerPass: function () {
-      call('apiSetPowerPass', [token(), draft('p:powerNew'), draft('p:powerConfirm')], function (result) {
+    askResetPower: function () { S.dialog = 'resetPower'; render(); },
+    resetPowerPass: function () {
+      S.dialog = null;
+      call('apiResetPowerPass', [token()], function (result) {
         if (result.ok) {
-          // 新しいトークンに切り替えて、そのまま操作を続けられるようにする
+          // 新しいトークンに切り替えて、そのまま操作を続けられるようにする(新パスはメールで届く)
           store.set(KEY.auth, JSON.stringify({ token: result.token, role: 'power', teamId: null, expires: result.expires }));
-          clearDrafts('p:power');
         }
-        handleResult(result, '管理者パスを変更しました');
+        handleResult(result, '新しい管理者パスをメールに送信しました');
       });
     }
   };
