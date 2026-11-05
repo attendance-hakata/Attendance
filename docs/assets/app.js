@@ -891,13 +891,20 @@
     if (S.ui.openGym) {
       var usedGym = {};
       (S.boot.teams || []).forEach(function (t) { if (t.homeGymId) usedGym[t.homeGymId] = true; });
-      (data.gyms || []).forEach(function (g) {
-        html += '<div class="list-row"><span class="pass-name">' + esc(g.name) + '</span>' +
+      var gyms = data.gyms || [];
+      html += '<div class="gym-list">';
+      gyms.forEach(function (g) {
+        html += '<div class="list-row gym-row" data-gym="' + esc(g.id) + '">' +
+          (gyms.length > 1 ? '<span class="drag-handle" aria-label="ドラッグして並べ替え">⋮⋮</span>' : '') +
+          '<span class="pass-name">' + esc(g.name) + '</span>' +
           (usedGym[g.id] ? '<span class="duty-state">使用中</span>' : '') +
           '<button class="link" data-a="askRenameGym" data-v="' + esc(g.id) + '">名称変更</button>' +
           (usedGym[g.id] ? '' : '<button class="link danger" data-a="askDeleteGym" data-v="' + esc(g.id) + '">削除</button>') + '</div>';
       });
-      html += '<div class="note-line">チームのホームになっている体育館は、ホームを外すまで削除できません。</div>';
+      html += '</div>';
+      html += '<div class="form-row">' + textInput('p:gymName', '', '新しい体育館名', 'text', 40) +
+        '<button class="sub-btn" data-a="addGym">登録</button></div>';
+      html += '<div class="note-line">左の ⋮⋮ をドラッグすると並び順を変えられます(割り振りやカレンダーの体育館の並びにも反映)。チームのホームになっている体育館は、ホームを外すまで削除できません。</div>';
     }
     html += '</div>';
     return html;
@@ -1518,6 +1525,10 @@
       adminCall('apiRenameGym', [S.gymEditId, draft('gymName', '')], '体育館名を変更しました', { clear: 'gymName', busy: '保存中…' });
     },
     askDeleteGym: function (v) { S.gymEditId = v; S.dialog = 'deleteGym'; render(); },
+    addGym: function () {
+      if (!String(draft('p:gymName', '')).trim()) { toast('体育館名を入力してください'); return; }
+      adminCall('apiAddGym', [draft('p:gymName', '')], '体育館を登録しました', { clear: 'p:gymName', busy: '登録中…' });
+    },
     deleteGym: function () {
       var id = S.gymEditId;
       S.dialog = null; S.gymEditId = null; render();
@@ -1590,6 +1601,55 @@
       if (ef !== 'memo') render();
     }
   });
+  // 体育館マスタの並び替え(⋮⋮ をドラッグ)。マウス・タッチ共通で Pointer Events を使い、
+  // 指の位置に合わせて行そのものを入れ替え、離したときに順番が変わっていれば保存する
+  var gymDrag = null;
+  document.addEventListener('pointerdown', function (event) {
+    var handle = event.target.closest('.drag-handle');
+    if (!handle || gymDrag) return;
+    var row = handle.closest('.gym-row');
+    var list = row && row.parentNode;
+    if (!list) return;
+    event.preventDefault();
+    gymDrag = { row: row, list: list, pointerId: event.pointerId, before: gymOrderOf(list).join(',') };
+    row.classList.add('dragging');
+    try { handle.setPointerCapture(event.pointerId); } catch (e) { /* 取れなくても document で拾う */ }
+  });
+  document.addEventListener('pointermove', function (event) {
+    if (!gymDrag || event.pointerId !== gymDrag.pointerId) return;
+    event.preventDefault();
+    var y = event.clientY, row = gymDrag.row;
+    var prev = row.previousElementSibling, next = row.nextElementSibling;
+    if (prev && y < prev.getBoundingClientRect().top + prev.offsetHeight / 2) {
+      gymDrag.list.insertBefore(row, prev);
+    } else if (next && y > next.getBoundingClientRect().top + next.offsetHeight / 2) {
+      gymDrag.list.insertBefore(row, next.nextElementSibling);
+    }
+  });
+  function endGymDrag(event) {
+    if (!gymDrag || event.pointerId !== gymDrag.pointerId) return;
+    var drag = gymDrag;
+    gymDrag = null;
+    drag.row.classList.remove('dragging');
+    var ids = gymOrderOf(drag.list);
+    if (ids.join(',') === drag.before) return;
+    // 返事を待つ間に再描画されても新しい並びで見えるよう、手元の一覧も先に並べ替える
+    if (S.admin.power && S.admin.power.gyms) {
+      var byId = {};
+      S.admin.power.gyms.forEach(function (g) { byId[g.id] = g; });
+      S.admin.power.gyms = ids.map(function (id) { return byId[id]; }).filter(Boolean);
+    }
+    call('apiReorderGyms', [token(), ids], function (result) {
+      // 失敗したら、サーバーの実際の並びを取り直して画面を戻す
+      if (!handleResult(result, '並び順を保存しました')) adminCall('apiPowerAdmin');
+    }, '保存中…');
+  }
+  document.addEventListener('pointerup', endGymDrag);
+  document.addEventListener('pointercancel', endGymDrag);
+  function gymOrderOf(list) {
+    return Array.prototype.map.call(list.querySelectorAll('.gym-row'), function (r) { return r.getAttribute('data-gym'); });
+  }
+
   window.addEventListener('resize', fitHero);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitHero);
 

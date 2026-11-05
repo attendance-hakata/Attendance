@@ -352,6 +352,10 @@ select.text-input{padding:0 8px}
 .duty-state{margin-left:auto;font-size:11px;font-weight:700;color:var(--acc)}
 .list-row .link{flex:none;font-size:12px}
 .pass-row small{margin-left:auto;text-align:right}
+/* 体育館マスタの並び替え(⋮⋮ をドラッグ) */
+.drag-handle{flex:none;display:flex;align-items:center;justify-content:center;width:28px;height:44px;margin-left:-4px;color:var(--mute);font-size:14px;letter-spacing:-3px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.gym-row.dragging{background:var(--rule);box-shadow:0 4px 14px rgba(0,0,0,.25);position:relative;z-index:1}
+.gym-row.dragging .drag-handle{color:var(--acc);cursor:grabbing}
 .pass-value{margin-left:auto;font-size:15px;font-weight:600;letter-spacing:.08em}
 
 /* カレンダー */
