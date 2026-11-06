@@ -90,7 +90,12 @@
     return '';
   }
   var CONTACT_LABEL = { tel: '電話', mail: 'メール', line: 'LINE/ID' };
+  // LINE の公式ロゴ(緑)。外部から読み込まず図形を直接持つので、オフラインでも表示できる
+  var LINE_LOGO_PATH = 'M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63h2.386c.346 0 .627.285.627.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63.346 0 .628.285.628.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.282.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314';
   function contactIcon(kind) {
+    if (kind === 'line') {
+      return '<svg class="cicon cicon-line" viewBox="0 0 24 24" width="16" height="16" aria-label="LINE"><path fill="#06C755" d="' + LINE_LOGO_PATH + '"/></svg>';
+    }
     var p = {
       tel: '<path d="M4 4h4l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v4a16 16 0 0 1-16-16z"/>',
       mail: '<rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 6l9 7 9-7"/>',
@@ -447,7 +452,7 @@
   }
   function allocStatus() {
     var A = allocA(), who = auth();
-    if (A.state === 'confirmed') return '<span class="tag confirmed">確定済み</span>' + (who && who.role === 'power' ? '<button class="link" data-a="allocUnconfirm">解除</button>' : '');
+    if (A.state === 'confirmed') return '<div class="alloc-confirmed"><span class="tag confirmed">確定済み</span>' + (canAllocate() ? '<button class="sub-btn unconf-btn" data-a="askUnconfirm">確定を解除</button>' : '') + '</div>';
     var on = A.state === 'open';
     return '<button class="swx' + (on ? ' on' : '') + '" role="switch" aria-checked="' + on + '" data-a="' + (on ? 'allocClose' : 'allocReopen') + '">'
       + '<span class="swx-text">' + (on ? '回答受付中' : '締め切り中') + '</span>'
@@ -808,12 +813,22 @@
     html += '</div>';
 
     html += '<div class="section"><div class="section-head"><span class="label">体育館(基本の使用時間)</span></div>';
+    // ホーム体育館の登録・変更。他チームのホームになっている体育館はその旨を添える
+    var homeOf = {};
+    (S.boot.teams || []).forEach(function (t) {
+      if (t.homeGymId && t.id !== team.teamId) (homeOf[t.homeGymId] = homeOf[t.homeGymId] || []).push(t.name);
+    });
+    var gymOptions = [['', 'なし']].concat((S.boot.gyms || []).map(function (g) {
+      return [g.id, g.name + (homeOf[g.id] ? '（' + homeOf[g.id].join('・') + 'のホーム）' : '')];
+    }));
+    html += '<div class="form-row"><span class="home-label">ホーム</span>' + selectInput('t:homeGym', gymOptions, team.homeGym ? team.homeGym.id : '') +
+      '<button class="sub-btn" data-a="saveHomeGym">変更</button></div>';
     if (team.homeGym) {
       html += '<div class="list-row"><span>' + esc(team.homeGym.name) + '</span></div><div class="form-row">' +
         textInput('t:start', team.homeGym.start, '', 'time') + '<span class="time-sep">〜</span>' + textInput('t:end', team.homeGym.end, '', 'time') +
         '<button class="sub-btn" data-a="saveGymHours">保存</button></div>';
     } else {
-      html += '<div class="note-line">ホーム体育館はありません。</div>';
+      html += '<div class="note-line">ホーム体育館はありません。上で選ぶと、使用時間を設定できます。</div>';
     }
     html += '</div>';
 
@@ -988,6 +1003,10 @@
     }
     if (S.dialog === 'editMember') return viewMemberEditSheet();
     if (S.dialog === 'renameGym') return viewGymRenameSheet();
+    if (S.dialog === 'unconfirm') {
+      var ud = S.boot && S.boot.next ? allocDateLabel(S.boot.next) : '';
+      return viewConfirmSheet(ud + 'の割り振りの確定を解除しますか?', '割り振りの中身は残ります。メンバーの画面は「未確定」に戻り、もう一度「決定」すると確定します。', 'allocUnconfirm', '解除する');
+    }
     if (S.dialog === 'deleteGym') {
       var dg = S.admin.power && (S.admin.power.gyms || []).filter(function (g) { return g.id === S.gymEditId; })[0];
       return viewConfirmSheet((dg ? dg.name : '') + 'を削除しますか?', 'この体育館をマスタから外します。過去の記録は残ります。', 'deleteGym', '削除する');
@@ -1387,7 +1406,8 @@
     },
     allocClose: function () { allocStateOp('apiCloseWeek', '回答を締め切りました', '更新中…'); },
     allocReopen: function () { allocStateOp('apiReopenWeek', '回答の受付を再開しました', '更新中…'); },
-    allocUnconfirm: function () { allocStateOp('apiUnconfirm', '確定を解除しました', '更新中…'); },
+    askUnconfirm: function () { S.dialog = 'unconfirm'; render(); },
+    allocUnconfirm: function () { S.dialog = null; render(); allocStateOp('apiUnconfirm', '確定を解除しました', '解除中…'); },
 
     // カレンダー(月表示)
     calPick: function (v) { S.cal.sel = v; render(); },
@@ -1501,6 +1521,14 @@
       var current = S.admin.team[v];
       adminCall('apiSaveContact', [S.admin.team.teamId, v, draft('t:' + v + ':name', current.name), draft('t:' + v + ':contact', current.contact)],
         '連絡先を保存しました', { clear: 't:' + v + ':' });
+    },
+    saveHomeGym: function () {
+      var t = S.admin.team;
+      var gymId = draft('t:homeGym', t.homeGym ? t.homeGym.id : '');
+      if (gymId === (t.homeGym ? t.homeGym.id : '')) { toast('変更はありません'); return; }
+      adminCall('apiSetHomeGym', [t.teamId, gymId], 'ホーム体育館を変更しました', { clear: 't:homeGym', busy: '保存中…' });
+      // 使用時間の入力途中は、新しい体育館の時間で出し直す
+      delete S.drafts['t:start']; delete S.drafts['t:end'];
     },
     saveGymHours: function () {
       var gym = S.admin.team.homeGym;
