@@ -239,8 +239,6 @@ a{color:inherit}
 .gymchip.off{border-style:dashed;color:var(--mute);opacity:.7}
 .gymchip.add{border-style:dashed;color:var(--acc)}
 .gymchip.add span{color:var(--mute)}
-.kind-btn{flex:none;font-size:11px;font-weight:700;padding:3px 8px;border:1px solid var(--rule);background:none;color:var(--tx);border-radius:999px}
-.kind-btn.temp{border-color:var(--acc);color:var(--acc)}
 .alloc-cur{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--rule);padding:10px 14px;margin-top:10px}
 .alloc-cur .nm{font-size:16px;font-weight:700}
 .alloc-cur .sub{font-size:11px;color:var(--mute);margin-top:2px}

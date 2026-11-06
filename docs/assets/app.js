@@ -484,7 +484,7 @@
       ? '<div class="field-label">体育館</div><div class="form-row">' + selectInput('a:tempGym', list.map(function (g) { return [g.id, g.name]; }), list[0].id) + '</div>' +
         '<div class="field-label">使用時間</div><div class="form-row">' + textInput('a:tempStart', '', '', 'time') + '<span class="time-sep">〜</span>' + textInput('a:tempEnd', '', '', 'time') + '</div>' +
         '<div class="conf-btns"><button class="ghost" style="height:56px" data-a="closeDialog">やめる</button><button class="go" data-a="addTempSlot">追加する</button></div>'
-      : '<div class="conf-note">臨時の体育館が登録されていません。管理者メニューの体育館マスタで、種類を「臨時」にして登録してください。</div>' +
+      : '<div class="conf-note">ホームになっていない体育館がありません。臨時で借りる体育館は、管理者メニューの体育館マスタで登録してください。</div>' +
         '<div class="conf-btns"><button class="ghost" style="height:56px" data-a="closeDialog">閉じる</button></div>';
     return '<div class="scrim" data-a="closeDialog"><div class="sheet" data-a="noop"><h3>その他の体育館を追加</h3>' +
       '<div class="conf-note">' + esc(allocDateLabel(A.date)) + 'だけの臨時枠として、割り振りに加えます。</div>' + body + '</div></div>';
@@ -838,21 +838,21 @@
     });
     html += '</div>';
 
-    html += '<div class="section"><div class="section-head"><span class="label">ホーム(学校と使用時間)</span></div>';
-    // ホームは学校＋時間の練習枠。他チームがホームにしている学校は、そのチームと時間を添える
+    html += '<div class="section"><div class="section-head"><span class="label">ホーム(体育館と使用時間)</span></div>';
+    // ホームは体育館＋時間の練習枠。他チームがホームにしている体育館は、そのチームと時間を添える
     var home = team.homeGym;
     var schools = team.schools || [];
     var gymOptions = [['', 'なし']].concat(schools.map(function (g) {
       var users = (g.users || []).map(function (u) { return u.name + (u.start ? ' ' + u.start + '〜' + u.end : ''); });
       return [g.id, g.name + (users.length ? '（' + users.join('・') + '）' : '')];
     }));
-    html += '<div class="form-row"><span class="home-label">学校</span>' + selectInput('t:home:gym', gymOptions, home ? home.id : '') + '</div>' +
+    html += '<div class="form-row"><span class="home-label">体育館</span>' + selectInput('t:home:gym', gymOptions, home ? home.id : '') + '</div>' +
       '<div class="form-row"><span class="home-label">時間</span>' + textInput('t:home:start', home ? home.start : '', '', 'time') + '<span class="time-sep">〜</span>' +
       textInput('t:home:end', home ? home.end : '', '', 'time') + '<button class="sub-btn" data-a="saveHomeGym">保存</button></div>';
     if (home && home.shared && home.shared.length) {
-      html += '<div class="note-line">' + esc(home.shared.join('・')) + 'と同じ枠(同じ学校・同じ時間)で練習します。</div>';
+      html += '<div class="note-line">' + esc(home.shared.join('・')) + 'と同じ枠(同じ体育館・同じ時間)で練習します。</div>';
     }
-    html += '<div class="note-line">同じ学校でも時間が違えば、別の練習場所として割り振られます。同じ時間にすると、そのチームと一緒の枠になります。</div>';
+    html += '<div class="note-line">同じ体育館でも時間が違えば、別の練習場所として割り振られます。同じ時間にすると、そのチームと一緒の枠になります。</div>';
     html += '</div>';
 
     return html + '<div class="section"><button class="link" data-a="logout">この端末のパス入力を解除する</button></div>';
@@ -936,15 +936,13 @@
           (gyms.length > 1 ? '<span class="drag-handle" aria-label="ドラッグして並べ替え">⋮⋮</span>' : '') +
           '<span class="pass-name">' + esc(g.name) + '</span>' +
           (usedGym[g.id] ? '<span class="duty-state">使用中</span>' : '') +
-          '<button class="kind-btn' + (g.kind === 'temp' ? ' temp' : '') + '" data-a="toggleGymKind" data-v="' + esc(g.id) + '" title="押すと種類を切り替えます">' + (g.kind === 'temp' ? '臨時' : '学校') + '</button>' +
           '<button class="link" data-a="askRenameGym" data-v="' + esc(g.id) + '">名称変更</button>' +
           (usedGym[g.id] ? '' : '<button class="link danger" data-a="askDeleteGym" data-v="' + esc(g.id) + '">削除</button>') + '</div>';
       });
       html += '</div>';
-      html += '<div class="form-row">' + selectInput('p:gymKind', [['school', '学校'], ['temp', '臨時']], 'school') +
-        textInput('p:gymName', '', '新しい体育館名', 'text', 40) +
+      html += '<div class="form-row">' + textInput('p:gymName', '', '新しい体育館名', 'text', 40) +
         '<button class="sub-btn" data-a="addGym">登録</button></div>';
-      html += '<div class="note-line">「学校」はチームのホームに選べる体育館、「臨時」は公共施設や企業の体育館など、割り振りの「その他の体育館」から臨時で借りる体育館です。種類のボタンを押すと切り替わります。</div>';
+      html += '<div class="note-line">どのチームのホームにもなっていない体育館は、割り振りの「その他の体育館」から臨時で借りる場所として選べます。</div>';
       html += '<div class="note-line">左の ⋮⋮ をドラッグすると並び順を変えられます(割り振りやカレンダーの体育館の並びにも反映)。チームのホームになっている体育館は、ホームを外すまで削除できません。</div>';
     }
     html += '</div>';
@@ -1578,7 +1576,7 @@
       adminCall('apiSaveContact', [S.admin.team.teamId, v, draft('t:' + v + ':name', current.name), draft('t:' + v + ':contact', current.contact)],
         '連絡先を保存しました', { clear: 't:' + v + ':' });
     },
-    // ホーム(学校＋時間)の保存。学校を「なし」にすると時間は無視する
+    // ホーム(体育館＋時間)の保存。「なし」にすると時間は無視する
     saveHomeGym: function () {
       var t = S.admin.team, h = t.homeGym;
       var gymId = draft('t:home:gym', h ? h.id : '');
@@ -1607,13 +1605,7 @@
     askDeleteGym: function (v) { S.gymEditId = v; S.dialog = 'deleteGym'; render(); },
     addGym: function () {
       if (!String(draft('p:gymName', '')).trim()) { toast('体育館名を入力してください'); return; }
-      adminCall('apiAddGym', [draft('p:gymName', ''), draft('p:gymKind', 'school')], '体育館を登録しました', { clear: 'p:gymName', busy: '登録中…' });
-    },
-    toggleGymKind: function (v) {
-      var g = S.admin.power && (S.admin.power.gyms || []).filter(function (x) { return x.id === v; })[0];
-      if (!g) return;
-      var next = g.kind === 'temp' ? 'school' : 'temp';
-      adminCall('apiSetGymKind', [v, next], '「' + g.name + '」を' + (next === 'temp' ? '臨時' : '学校') + 'にしました', { busy: '保存中…' });
+      adminCall('apiAddGym', [draft('p:gymName', '')], '体育館を登録しました', { clear: 'p:gymName', busy: '登録中…' });
     },
     deleteGym: function () {
       var id = S.gymEditId;
