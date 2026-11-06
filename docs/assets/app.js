@@ -275,7 +275,7 @@
       var gym = view.gyms.filter(function (g) { return g.id === view.alloc[team.id]; })[0];
       var mates = gym.teams.filter(function (t) { return t.id !== team.id; }).map(function (t) { return t.name; }).join('、') || 'なし(単独)';
       html += '<div class="place"><div class="pair"><span>今週の体育館</span><span>' + esc(team.name) + '</span></div>' +
-        '<h2>' + esc(gym.name) + '</h2>' + (gym.start ? '<p class="place-time">' + esc(timeText(gym)) + '</p>' : '') +
+        '<h2>' + esc(gym.gymName || gym.name) + '</h2>' + (gym.start ? '<p class="place-time">' + esc(timeText(gym)) + '</p>' : '') +
         '<p>一緒に練習:' + esc(mates) + '</p>' +
         '<a href="' + esc(mapUrl(gym)) + '" target="_blank" rel="noopener">地図を開く ↗</a></div>';
     } else {
@@ -422,7 +422,9 @@
   // ===== 割り振り(モックアップ準拠。画面内で割り振ってから「決定」でまとめて保存) =====
   var ALLOC_UNIT = 6; // 6人以上が目安(バックエンドの警告しきい値に合わせる)
   function allocA() { return S.boot.allocation; }
-  function allocGymName(id) { var g = calGym(id); return g ? g.name : ''; }
+  // 割り振りの単位は練習枠(体育館＋時間)。名前は割当データの枠から引く
+  function allocSlot(id) { var A = allocA(); return (A && A.gyms || []).filter(function (g) { return g.id === id; })[0]; }
+  function allocGymName(id) { var s = allocSlot(id); if (s) return s.name; var g = calGym(id); return g ? g.name : ''; }
   function allocGymTotal(gymId) {
     return allocA().allTeams.reduce(function (s, t) { return s + (S.alloc.map[t.id] === gymId ? t.yes : 0); }, 0);
   }
@@ -434,7 +436,7 @@
     allocUnassigned().forEach(function (t) { w.push(t.name + '（' + t.yes + '人）がまだ割り振られていません'); });
     A.gyms.forEach(function (g) {
       var tot = allocGymTotal(g.id);
-      var home = A.allTeams.filter(function (t) { return t.homeGymId === g.id; })[0];
+      var home = A.allTeams.filter(function (t) { return t.homeSlotId === g.id; })[0];
       if (tot > 0 && tot < ALLOC_UNIT) w.push(g.name + 'が' + tot + '人です（' + ALLOC_UNIT + '人未満）');
       if (tot > 0 && home && S.alloc.map[home.id] !== g.id) w.push(g.name + 'にホームの' + home.name + 'がいません');
     });
@@ -463,23 +465,47 @@
     if (!S.boot || !allocA()) return adminLoading();
     var A = allocA();
     if (A.dayOff) return allocHead() + '<div class="empty"><b>この週は練習休みです。</b>' + esc(A.dayOffReason) + '</div>';
-    if (A.noOpenGyms) return allocHead() + '<div class="empty"><b>開ける体育館がありません。</b>カレンダーの使用不可を確認してください。</div>';
+    if (A.noOpenGyms) return allocHead() + '<div class="empty"><b>開ける体育館がありません。</b>カレンダーの使用不可を確認してください。</div>' + allocTempButton();
     if (S.alloc.screen === 'confirm') return viewAllocConfirm();
     if (S.alloc.screen === 'line') return viewAllocLine();
     return viewAllocPick();
   }
 
+  // 「その他の体育館」(臨時枠の追加)。確定済みの週と割振担当以外には出さない
+  function allocTempButton() {
+    var A = allocA();
+    if (!A || A.state === 'confirmed' || !canAllocate()) return '';
+    return '<button class="gymchip add" data-a="askTempSlot"><b>＋ その他の体育館</b><span>臨時で借りる</span></button>';
+  }
+
+  function viewTempSlotSheet() {
+    var A = allocA(), list = (A && A.tempGyms) || [];
+    var body = list.length
+      ? '<div class="field-label">体育館</div><div class="form-row">' + selectInput('a:tempGym', list.map(function (g) { return [g.id, g.name]; }), list[0].id) + '</div>' +
+        '<div class="field-label">使用時間</div><div class="form-row">' + textInput('a:tempStart', '', '', 'time') + '<span class="time-sep">〜</span>' + textInput('a:tempEnd', '', '', 'time') + '</div>' +
+        '<div class="conf-btns"><button class="ghost" style="height:56px" data-a="closeDialog">やめる</button><button class="go" data-a="addTempSlot">追加する</button></div>'
+      : '<div class="conf-note">臨時の体育館が登録されていません。管理者メニューの体育館マスタで、種類を「臨時」にして登録してください。</div>' +
+        '<div class="conf-btns"><button class="ghost" style="height:56px" data-a="closeDialog">閉じる</button></div>';
+    return '<div class="scrim" data-a="closeDialog"><div class="sheet" data-a="noop"><h3>その他の体育館を追加</h3>' +
+      '<div class="conf-note">' + esc(allocDateLabel(A.date)) + 'だけの臨時枠として、割り振りに加えます。</div>' + body + '</div></div>';
+  }
+
   function viewAllocPick() {
     var A = allocA(), active = S.alloc.gym;
     var chips = A.gyms.map(function (g) {
-      return '<button class="gymchip' + (g.id === active ? ' on' : '') + '" data-a="allocGym" data-v="' + esc(g.id) + '"><b>' + esc(g.name) + '</b><span>' + allocGymTotal(g.id) + '人</span></button>';
+      return '<button class="gymchip' + (g.id === active ? ' on' : '') + '" data-a="allocGym" data-v="' + esc(g.id) + '"><b>' + esc(g.name) + '</b><span>' + (g.temp ? '臨時・' : '') + allocGymTotal(g.id) + '人</span></button>';
     }).join('') + A.closed.map(function (c) {
       return '<button class="gymchip off" disabled><b>' + esc(c.name) + '</b><span>' + esc(c.reason) + '</span></button>';
-    }).join('');
-    var homeTeam = A.allTeams.filter(function (t) { return t.homeGymId === active; })[0];
+    }).join('') + allocTempButton();
+    var homeTeam = A.allTeams.filter(function (t) { return t.homeSlotId === active; })[0];
+    var curSlot = allocSlot(active);
     var curTotal = allocGymTotal(active);
+    var canDrop = curSlot && curSlot.temp && A.state !== 'confirmed' && canAllocate() && curTotal === 0 &&
+      A.allTeams.every(function (t) { return S.alloc.map[t.id] !== active; });
     var cur = '<div class="alloc-cur"><div><div class="nm">' + esc(allocGymName(active)) + '</div><div class="sub">' +
-      (homeTeam ? 'ホーム：' + esc(homeTeam.name) : 'ホームのチームなし') + '</div></div>' +
+      (curSlot && curSlot.start ? esc(timeText(curSlot)) + '　' : '') +
+      (curSlot && curSlot.temp ? '臨時枠' : homeTeam ? 'ホーム：' + esc(homeTeam.name) : 'ホームのチームなし') + '</div>' +
+      (canDrop ? '<button class="link danger" data-a="removeTempSlot" data-v="' + esc(active) + '">この臨時枠を外す</button>' : '') + '</div>' +
       '<div class="tot"><span class="big">' + curTotal + '</span>人<div class="sub">' + Math.floor(curTotal / ALLOC_UNIT) + 'チーム分</div></div></div>';
     var teams = A.allTeams.map(function (t) {
       var a = S.alloc.map[t.id], here = a === active, off = t.rest, cls = '', st;
@@ -490,7 +516,7 @@
       if (!off && t.yes < ALLOC_UNIT) st += '　' + ALLOC_UNIT + '人未満';
       return '<button class="teamrow' + (here ? ' here' : '') + '" data-a="allocTap" data-v="' + esc(t.id) + '"' + (off ? ' disabled' : '') + '>' +
         '<span class="bd">' + esc(teamMark(t.name)) + '</span>' +
-        '<span class="tinfo"><span class="tnm">' + esc(t.name) + (t.homeGymId === active ? '<span class="homeb">HOME</span>' : '') + '</span><span class="st ' + cls + '">' + esc(st) + '</span></span>' +
+        '<span class="tinfo"><span class="tnm">' + esc(t.name) + (t.homeSlotId === active ? '<span class="homeb">HOME</span>' : '') + '</span><span class="st ' + cls + '">' + esc(st) + '</span></span>' +
         '<span class="num"><b' + (!off && t.yes < ALLOC_UNIT ? ' class="short"' : '') + '>' + t.yes + '</b>人</span></button>';
     }).join('');
     var un = allocUnassigned();
@@ -506,7 +532,7 @@
     var A = allocA(), p = A.allTeams.filter(function (t) { return t.id === S.alloc.pending; })[0];
     if (!p) return '';
     var from = S.alloc.map[p.id], fromTot = allocGymTotal(from), toTot = allocGymTotal(S.alloc.gym);
-    var homeWarn = p.homeGymId && p.homeGymId === from;
+    var homeWarn = p.homeSlotId && p.homeSlotId === from;
     return '<div class="scrim" data-a="allocCancelMove"><div class="sheet" data-a="noop">' +
       '<div class="kicker">割振済みのチームです</div>' +
       '<h3>' + esc(p.name) + '（' + p.yes + '人）を' + esc(allocGymName(S.alloc.gym)) + 'に移しますか?</h3>' +
@@ -812,24 +838,21 @@
     });
     html += '</div>';
 
-    html += '<div class="section"><div class="section-head"><span class="label">体育館(基本の使用時間)</span></div>';
-    // ホーム体育館の登録・変更。他チームのホームになっている体育館はその旨を添える
-    var homeOf = {};
-    (S.boot.teams || []).forEach(function (t) {
-      if (t.homeGymId && t.id !== team.teamId) (homeOf[t.homeGymId] = homeOf[t.homeGymId] || []).push(t.name);
-    });
-    var gymOptions = [['', 'なし']].concat((S.boot.gyms || []).map(function (g) {
-      return [g.id, g.name + (homeOf[g.id] ? '（' + homeOf[g.id].join('・') + 'のホーム）' : '')];
+    html += '<div class="section"><div class="section-head"><span class="label">ホーム(学校と使用時間)</span></div>';
+    // ホームは学校＋時間の練習枠。他チームがホームにしている学校は、そのチームと時間を添える
+    var home = team.homeGym;
+    var schools = team.schools || [];
+    var gymOptions = [['', 'なし']].concat(schools.map(function (g) {
+      var users = (g.users || []).map(function (u) { return u.name + (u.start ? ' ' + u.start + '〜' + u.end : ''); });
+      return [g.id, g.name + (users.length ? '（' + users.join('・') + '）' : '')];
     }));
-    html += '<div class="form-row"><span class="home-label">ホーム</span>' + selectInput('t:homeGym', gymOptions, team.homeGym ? team.homeGym.id : '') +
-      '<button class="sub-btn" data-a="saveHomeGym">変更</button></div>';
-    if (team.homeGym) {
-      html += '<div class="list-row"><span>' + esc(team.homeGym.name) + '</span></div><div class="form-row">' +
-        textInput('t:start', team.homeGym.start, '', 'time') + '<span class="time-sep">〜</span>' + textInput('t:end', team.homeGym.end, '', 'time') +
-        '<button class="sub-btn" data-a="saveGymHours">保存</button></div>';
-    } else {
-      html += '<div class="note-line">ホーム体育館はありません。上で選ぶと、使用時間を設定できます。</div>';
+    html += '<div class="form-row"><span class="home-label">学校</span>' + selectInput('t:home:gym', gymOptions, home ? home.id : '') + '</div>' +
+      '<div class="form-row"><span class="home-label">時間</span>' + textInput('t:home:start', home ? home.start : '', '', 'time') + '<span class="time-sep">〜</span>' +
+      textInput('t:home:end', home ? home.end : '', '', 'time') + '<button class="sub-btn" data-a="saveHomeGym">保存</button></div>';
+    if (home && home.shared && home.shared.length) {
+      html += '<div class="note-line">' + esc(home.shared.join('・')) + 'と同じ枠(同じ学校・同じ時間)で練習します。</div>';
     }
+    html += '<div class="note-line">同じ学校でも時間が違えば、別の練習場所として割り振られます。同じ時間にすると、そのチームと一緒の枠になります。</div>';
     html += '</div>';
 
     return html + '<div class="section"><button class="link" data-a="logout">この端末のパス入力を解除する</button></div>';
@@ -913,12 +936,15 @@
           (gyms.length > 1 ? '<span class="drag-handle" aria-label="ドラッグして並べ替え">⋮⋮</span>' : '') +
           '<span class="pass-name">' + esc(g.name) + '</span>' +
           (usedGym[g.id] ? '<span class="duty-state">使用中</span>' : '') +
+          '<button class="kind-btn' + (g.kind === 'temp' ? ' temp' : '') + '" data-a="toggleGymKind" data-v="' + esc(g.id) + '" title="押すと種類を切り替えます">' + (g.kind === 'temp' ? '臨時' : '学校') + '</button>' +
           '<button class="link" data-a="askRenameGym" data-v="' + esc(g.id) + '">名称変更</button>' +
           (usedGym[g.id] ? '' : '<button class="link danger" data-a="askDeleteGym" data-v="' + esc(g.id) + '">削除</button>') + '</div>';
       });
       html += '</div>';
-      html += '<div class="form-row">' + textInput('p:gymName', '', '新しい体育館名', 'text', 40) +
+      html += '<div class="form-row">' + selectInput('p:gymKind', [['school', '学校'], ['temp', '臨時']], 'school') +
+        textInput('p:gymName', '', '新しい体育館名', 'text', 40) +
         '<button class="sub-btn" data-a="addGym">登録</button></div>';
+      html += '<div class="note-line">「学校」はチームのホームに選べる体育館、「臨時」は公共施設や企業の体育館など、割り振りの「その他の体育館」から臨時で借りる体育館です。種類のボタンを押すと切り替わります。</div>';
       html += '<div class="note-line">左の ⋮⋮ をドラッグすると並び順を変えられます(割り振りやカレンダーの体育館の並びにも反映)。チームのホームになっている体育館は、ホームを外すまで削除できません。</div>';
     }
     html += '</div>';
@@ -1003,6 +1029,7 @@
     }
     if (S.dialog === 'editMember') return viewMemberEditSheet();
     if (S.dialog === 'renameGym') return viewGymRenameSheet();
+    if (S.dialog === 'tempSlot') return viewTempSlotSheet();
     if (S.dialog === 'unconfirm') {
       var ud = S.boot && S.boot.next ? allocDateLabel(S.boot.next) : '';
       return viewConfirmSheet(ud + 'の割り振りの確定を解除しますか?', '割り振りの中身は残ります。メンバーの画面は「未確定」に戻り、もう一度「決定」すると確定します。', 'allocUnconfirm', '解除する');
@@ -1374,6 +1401,35 @@
       else if (!a) { S.alloc.map[v] = S.alloc.gym; render(); }
       else { S.alloc.pending = v; render(); }
     },
+    // 臨時枠(その他の体育館)の追加と取り外し
+    askTempSlot: function () { clearDrafts('a:temp'); S.dialog = 'tempSlot'; render(); },
+    addTempSlot: function () {
+      var A = allocA(), list = A.tempGyms || [];
+      var gymId = draft('a:tempGym', list[0] ? list[0].id : ''), start = draft('a:tempStart', ''), end = draft('a:tempEnd', '');
+      if (!gymId) return;
+      if (!start || !end) { toast('使用時間を入力してください'); return; }
+      call('apiAddTempSlot', [token(), S.boot.next, gymId, start, end], function (result) {
+        if (result.ok) {
+          setBoot(result.boot);
+          S.dialog = null;
+          S.alloc.started = true;
+          if (result.slotId) S.alloc.gym = result.slotId;
+          clearDrafts('a:temp');
+          render(); toast('臨時枠を追加しました');
+        } else handleResult(result, null, true);
+      }, '追加中…');
+    },
+    removeTempSlot: function (v) {
+      call('apiRemoveTempSlot', [token(), S.boot.next, v], function (result) {
+        if (result.ok) {
+          setBoot(result.boot);
+          Object.keys(S.alloc.map).forEach(function (k) { if (S.alloc.map[k] === v) delete S.alloc.map[k]; });
+          var first = allocA().gyms[0];
+          S.alloc.gym = first ? first.id : '';
+          render(); toast('臨時枠を外しました');
+        } else handleResult(result);
+      }, '保存中…');
+    },
     allocCancelMove: function () { S.alloc.pending = null; render(); },
     allocConfirmMove: function () { S.alloc.map[S.alloc.pending] = S.alloc.gym; S.alloc.pending = null; render(); },
     allocToConfirm: function () { S.alloc.started = true; S.alloc.screen = 'confirm'; render(); scrollTop_(); },
@@ -1522,19 +1578,15 @@
       adminCall('apiSaveContact', [S.admin.team.teamId, v, draft('t:' + v + ':name', current.name), draft('t:' + v + ':contact', current.contact)],
         '連絡先を保存しました', { clear: 't:' + v + ':' });
     },
+    // ホーム(学校＋時間)の保存。学校を「なし」にすると時間は無視する
     saveHomeGym: function () {
-      var t = S.admin.team;
-      var gymId = draft('t:homeGym', t.homeGym ? t.homeGym.id : '');
-      if (gymId === (t.homeGym ? t.homeGym.id : '')) { toast('変更はありません'); return; }
-      adminCall('apiSetHomeGym', [t.teamId, gymId], 'ホーム体育館を変更しました', { clear: 't:homeGym', busy: '保存中…' });
-      // 使用時間の入力途中は、新しい体育館の時間で出し直す
-      delete S.drafts['t:start']; delete S.drafts['t:end'];
-    },
-    saveGymHours: function () {
-      var gym = S.admin.team.homeGym;
-      adminCall('apiSaveGymHours', [S.admin.team.teamId, draft('t:start', gym.start), draft('t:end', gym.end)],
-        '使用時間を保存しました', { clear: 't:start' });
-      delete S.drafts['t:end'];
+      var t = S.admin.team, h = t.homeGym;
+      var gymId = draft('t:home:gym', h ? h.id : '');
+      var start = gymId ? draft('t:home:start', h ? h.start : '') : '';
+      var end = gymId ? draft('t:home:end', h ? h.end : '') : '';
+      if (gymId === (h ? h.id : '') && (!gymId || (start === h.start && end === h.end))) { toast('変更はありません'); return; }
+      if (gymId && (!start) !== (!end)) { toast('開始と終了の両方を入力してください'); return; }
+      adminCall('apiSetHomeGym', [t.teamId, gymId, start, end], 'ホームを保存しました', { clear: 't:home:', busy: '保存中…' });
     },
 
     copyContact: function (v) {
@@ -1555,7 +1607,13 @@
     askDeleteGym: function (v) { S.gymEditId = v; S.dialog = 'deleteGym'; render(); },
     addGym: function () {
       if (!String(draft('p:gymName', '')).trim()) { toast('体育館名を入力してください'); return; }
-      adminCall('apiAddGym', [draft('p:gymName', '')], '体育館を登録しました', { clear: 'p:gymName', busy: '登録中…' });
+      adminCall('apiAddGym', [draft('p:gymName', ''), draft('p:gymKind', 'school')], '体育館を登録しました', { clear: 'p:gymName', busy: '登録中…' });
+    },
+    toggleGymKind: function (v) {
+      var g = S.admin.power && (S.admin.power.gyms || []).filter(function (x) { return x.id === v; })[0];
+      if (!g) return;
+      var next = g.kind === 'temp' ? 'school' : 'temp';
+      adminCall('apiSetGymKind', [v, next], '「' + g.name + '」を' + (next === 'temp' ? '臨時' : '学校') + 'にしました', { busy: '保存中…' });
     },
     deleteGym: function () {
       var id = S.gymEditId;
