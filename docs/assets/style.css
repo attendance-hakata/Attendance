@@ -391,6 +391,9 @@ select.text-input{padding:0 8px}
 .sheet-user{gap:8px}
 .sheet-user h3{font-size:22px;border:none;padding:0}
 .sheet-user p{font-size:13px;color:var(--mute);margin:0 0 6px}
+.user-pass{display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:14px;border-top:1px solid var(--rule)}
+.user-pass b{font-size:14px}
+.user-pass ul{margin:0;padding-left:18px;font-size:13px;line-height:1.6;color:var(--mute)}
 .move-opt{display:flex;align-items:center;height:56px;width:100%;border-bottom:1px solid var(--rule);font-size:16px;font-weight:600;text-align:left}
 .move-opt span{margin-right:auto}
 .move-opt small{font-family:var(--mono);font-size:12px;color:var(--mute);font-weight:400}

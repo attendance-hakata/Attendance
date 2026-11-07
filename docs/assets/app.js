@@ -855,7 +855,7 @@
     html += '<div class="note-line">同じ体育館でも時間が違えば、別の練習場所として割り振られます。同じ時間にすると、そのチームと一緒の枠になります。</div>';
     html += '</div>';
 
-    return html + '<div class="section"><button class="link" data-a="logout">この端末のパス入力を解除する</button></div>';
+    return html;
   }
 
   // ---- 管理者ページ ----
@@ -1009,13 +1009,28 @@
       '<button class="go" data-a="' + action + '">' + esc(label) + '</button></div></div></div>';
   }
 
+  // 名前を押したときの画面の下半分。管理画面のパスが入力済みのときだけ、解除ボタンと影響の説明を出す
+  function viewUserPass() {
+    var w = auth();
+    if (!w) return '';
+    var t = w.role === 'power' ? null : (S.boot && S.boot.teams || []).filter(function (x) { return x.id === w.teamId; })[0];
+    var state = w.role === 'power' ? '管理者' : (t ? esc(t.name) : 'チーム');
+    return '<div class="user-pass"><b>管理画面のパス:入力済み(' + state + ')</b>' +
+      '<ul><li>解除すると、この端末で管理画面を開くときに、もう一度パスの入力が必要になります</li>' +
+      '<li>ホームの表示や出欠の回答は、これまでどおり使えます</li>' +
+      '<li>パスそのもの、他の端末、登録したデータには影響しません</li></ul>' +
+      '<p>人に借りた端末や共有の端末では、使い終わったら解除してください。</p>' +
+      '<button class="ghost" data-a="logout">パス入力を解除する</button></div>';
+  }
+
   function viewDialog(member, team) {
     if (S.cal && S.cal.confirmDel) return viewEventDelete();
     if (S.cal && S.cal.confirmClosed) return viewConfirmSheet('この体育館を使用不可にしますか?', '選んだ日は、この体育館が全チームの割り振りから外れます。みんなのカレンダーに反映されます。', 'doSaveEvent', '使用不可にする');
     if (S.screen === 'calendar' && S.cal && S.cal.sheet) return viewEventSheet();
     if (S.dialog === 'user') {
       return '<div class="scrim" data-a="closeDialog"><div class="sheet sheet-user" data-a="noop"><h3>' + esc(member.name) + 'さん / ' + esc(team.name) + '</h3>' +
-        '<p>この端末にログイン状態を保存しています。</p><button class="ghost strong" data-a="changeUser">ログインを変更する</button></div></div>';
+        '<p>この端末に、メンバーの選択を保存しています。</p><button class="ghost strong" data-a="changeUser">ログインを変更する</button>' +
+        viewUserPass() + '</div></div>';
     }
     if (S.dialog === 'code') return viewPass();
     if (S.dialog === 'deleteComment') return viewConfirmSheet('このコメントを削除しますか?', '削除すると元に戻せません。', 'deleteComment', '削除する');
@@ -1387,6 +1402,7 @@
     },
     logout: function () {
       dropAuth();
+      S.dialog = null;
       S.screen = 'home';
       render();
       toast('パス入力を解除しました');
