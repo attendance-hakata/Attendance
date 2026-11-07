@@ -14,4 +14,3 @@
 | `docs/assets/style.css` | スタイル |
 | `docs/assets/app.js` | 画面の処理 |
 | `docs/config.js` | GAS の公開 API（exec）URL |
-| `docs/ping.html` | 通信確認用の簡易ページ |
