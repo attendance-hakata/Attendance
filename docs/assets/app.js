@@ -520,7 +520,7 @@
         '<span class="num"><b' + (!off && t.yes < ALLOC_UNIT ? ' class="short"' : '') + '>' + t.yes + '</b>人</span></button>';
     }).join('');
     var un = allocUnassigned();
-    var auto = A.state === 'confirmed' ? '' : '<button class="link reset" data-a="allocAuto">自動で割り振る</button>';
+    var auto = A.state === 'confirmed' ? '' : '<button class="ghost auto-btn" data-a="askAllocAuto">自動で割り振る</button>';
     return allocHead() +
       '<div class="label gap">① 今週使える体育館を選ぶ</div><div class="gymchips">' + chips + '</div>' + cur +
       '<div class="label gap">② チームをタップして、この体育館に割り振る</div><div class="teamlist">' + teams + '</div>' + auto +
@@ -1028,6 +1028,9 @@
     if (S.dialog === 'editMember') return viewMemberEditSheet();
     if (S.dialog === 'renameGym') return viewGymRenameSheet();
     if (S.dialog === 'tempSlot') return viewTempSlotSheet();
+    if (S.dialog === 'allocAuto') {
+      return viewConfirmSheet('自動で割り振り直しますか?', '今の割り振りを、ホームと参加人数をもとにした自動の割振で置き換えます。手で動かしたチームも自動の位置に戻り、元には戻せません。', 'allocAuto', '割り振り直す');
+    }
     if (S.dialog === 'unconfirm') {
       var ud = S.boot && S.boot.next ? allocDateLabel(S.boot.next) : '';
       return viewConfirmSheet(ud + 'の割り振りの確定を解除しますか?', '割り振りの中身は残ります。メンバーの画面は「未確定」に戻り、もう一度「決定」すると確定します。', 'allocUnconfirm', '解除する');
@@ -1177,7 +1180,8 @@
   // 週の状態操作(締切・再開・解除)。割当の map は保持し、boot と表示だけ更新する
   function allocStateOp(apiName, message, label) {
     call(apiName, [token(), S.boot.next], function (result) {
-      if (result.ok) { setBoot(result.boot); render(); toast(message); }
+      // カレンダーへの反映に失敗しても操作自体は成功している。その旨を添えて知らせる
+      if (result.ok) { setBoot(result.boot); render(); toast(message + (result.gcalError ? '(' + result.gcalError + ')' : '')); }
       else handleResult(result);
     }, label);
   }
@@ -1440,7 +1444,7 @@
           S.alloc.version = (result.boot.allocation && result.boot.allocation.version) || S.alloc.version;
           S.alloc.screen = 'line';
           S.alloc.copied = false;
-          render(); scrollTop_(); toast('割当を決定しました');
+          render(); scrollTop_(); toast('割当を決定しました' + (result.gcalError ? '(' + result.gcalError + ')' : ''));
         } else if (result.code === 'CONFLICT') {
           toast(result.message); openAlloc();
         } else { handleResult(result); }
@@ -1452,7 +1456,10 @@
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, done);
       else done();
     },
+    // 自動の割り振り直しは、念のため最終確認を挟む
+    askAllocAuto: function () { S.dialog = 'allocAuto'; render(); },
     allocAuto: function () {
+      S.dialog = null; render();
       call('apiResetDraft', [token(), S.boot.next], function (result) {
         if (result.ok) { setBoot(result.boot); initAlloc(); render(); toast('自動で割り振りました'); }
         else handleResult(result);

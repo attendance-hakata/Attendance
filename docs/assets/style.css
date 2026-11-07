@@ -397,6 +397,7 @@ select.text-input{padding:0 8px}
 .move-opt:disabled{opacity:.4}
 .ghost{height:50px;width:100%;border:1px solid var(--rule);font-weight:600;font-size:15px}
 .ghost.strong{border-color:var(--tx)}
+.ghost.auto-btn{margin-top:14px}
 .sheet .cancel{margin-top:12px}
 .conf-row{display:flex;gap:10px;align-items:baseline;font-size:15px;padding:12px 0;border-bottom:1px solid var(--rule)}
 .conf-row b{flex:none;width:80px}
