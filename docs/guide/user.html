@@ -21,6 +21,7 @@ h1{font-size:28px;line-height:1.3;margin:16px 0 8px}
 h1 i{color:var(--acc);font-style:normal}
 h2{font-size:21px;margin:40px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--rule)}
 h3{font-size:17px;margin:28px 0 8px}
+h4{font-size:16px;margin:24px 0 8px;color:var(--acc)}
 p,ul,ol{margin:0 0 14px}
 ul,ol{padding-left:22px}
 li{margin:4px 0}
@@ -47,6 +48,36 @@ figcaption{margin-top:8px;color:var(--mute);font-size:13px;text-align:center}
 .types{display:flex;flex-direction:column;gap:8px;margin:8px 0 24px}
 .type-row{display:flex;gap:12px;align-items:flex-start;background:var(--sf);border:1px solid var(--rule);padding:10px 12px;font-size:14px;line-height:1.6}
 .type-tag{flex:none;min-width:84px;text-align:center;border:1px solid;padding:1px 8px;font-size:13px;font-weight:700}
+.a2hs{list-style:none;padding:0;margin:8px 0 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px}
+.a2hs li{margin:0;display:flex;flex-direction:column;gap:10px}
+.a2hs-text{display:flex;gap:8px;align-items:flex-start;font-size:14px;line-height:1.6}
+.a2hs-text b{display:block}
+.a2hs-text span:not(.flow-no){display:block;color:var(--mute);font-size:13px}
+.mock{position:relative;height:230px;border:2px solid #4a4c46;border-radius:18px;background:#f4f4f1;overflow:hidden;color:#222;font-size:11px;line-height:1.4}
+.mock .m-page{position:absolute;inset:0;background:repeating-linear-gradient(#f4f4f1 0 18px,#e3e3de 18px 20px)}
+.mock>*:not(.m-page){z-index:1}
+.mock .m-page.dim::after{content:'';position:absolute;inset:0;background:rgba(0,0,0,.35)}
+.mock .m-bar{position:absolute;left:0;right:0;display:flex;align-items:center;gap:6px;padding:8px;background:#fff;border-color:#ccc;border-style:solid;border-width:0}
+.mock .m-top{top:0;border-bottom-width:1px}
+.mock .m-bottom{bottom:0;border-top-width:1px}
+.mock .m-url{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;background:#e9e9e6;border-radius:8px;padding:4px 6px;font-size:10px}
+.mock .m-btn{flex:none;width:24px;height:24px;line-height:24px;text-align:center;font-size:15px;font-weight:700;border-radius:6px}
+.mock .m-menu{position:absolute;background:#fff;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.25);padding:4px 0;min-width:110px}
+.mock .m-menu.m-bottom{bottom:8px;right:8px;left:auto;border:0}
+.mock .m-menu.m-right{top:40px;right:6px}
+.mock .m-menu div,.mock .m-sheet div{padding:6px 10px;display:flex;justify-content:space-between;gap:6px}
+.mock .m-sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:14px 14px 0 0;padding:8px 4px 14px}
+.mock .m-icon{font-size:13px}
+.mock .m-head{position:relative;display:flex;justify-content:space-between;align-items:center;gap:2px;padding:10px 6px;background:#fff;border-bottom:1px solid #ccc;font-size:9px;white-space:nowrap}
+.mock .m-head b{font-size:9px}
+.mock .m-head span{color:#0a66d8;padding:2px 3px}
+.mock .m-app{display:flex;align-items:center;gap:8px;padding:12px 10px}
+.mock .m-logo{width:30px;height:30px;border-radius:8px;background:#0e0f0d url(../assets/apple-touch-icon.png) center/cover}
+.mock .m-dialog{position:absolute;left:10px;right:10px;top:60px;background:#fff;border-radius:12px;padding:12px}
+.mock .m-dialog .m-app{padding:10px 0}
+.mock .m-actions{display:flex;justify-content:flex-end;gap:14px;color:#0a66d8}
+.mock .m-actions span{padding:2px 4px}
+.mock .hit{outline:3px solid #7aa80c;outline-offset:1px;border-radius:6px;background:#eaf7c8;font-weight:700}
 </style>
 </head>
 <body>
@@ -54,7 +85,7 @@ figcaption{margin-top:8px;color:var(--mute);font-size:13px;text-align:center}
 <nav class="top"><a href="../">← アプリを開く</a><a href="allocator.html">割当者ガイド</a></nav>
 <h1>Attendance ユーザーガイド(メンバー向け)<i>.</i></h1>
 <p>毎週日曜の練習の出欠を、スマホから回答するためのアプリです。今週の体育館やチームの連絡もここで確認できます。</p>
-<ul><li>開くページ: <a href="https://attendance-hakata.github.io/Attendance/">https://attendance-hakata.github.io/Attendance/</a></li><li>ホーム画面に追加しておくと、アプリのようにすぐ開けます(ブラウザのメニューから「ホーム画面に追加」)</li><li>このガイドは、アプリの右上の名前 →「使い方」からも開けます</li></ul>
+<ul><li>開くページ: <a href="https://attendance-hakata.github.io/Attendance/">https://attendance-hakata.github.io/Attendance/</a></li><li>ホーム画面に追加しておくと、アプリのようにすぐ開けます(→ 1章「ホーム画面に追加する」)</li><li>このガイドは、アプリの右上の名前 →「使い方」からも開けます</li></ul>
 <hr>
 <h2>1. はじめて開いたとき</h2>
 <ol><li>一覧から、自分の<strong>チーム</strong>を選びます</li><li>続けて、自分の<strong>名前</strong>を選びます</li></ol>
@@ -64,6 +95,15 @@ figcaption{margin-top:8px;color:var(--mute);font-size:13px;text-align:center}
 <ul><li>選んだチームと名前は、この端末に保存されます。次からはそのままホームが開きます</li><li>保存に期限はありません</li><li>名前が一覧にないときは、チームの代表に追加を頼んでください</li></ul>
 <h3>選び直したいとき</h3>
 <p>右上の名前(チームの記号と名前のボタン)をタップし、「ログインを変更する」を押すと、チームと名前を選び直せます。</p>
+<h3>ホーム画面に追加する</h3>
+<p>ホーム画面にアイコンを置いておくと、ブラウザを開かずにタップ1回で開けます。</p>
+<aside><p><strong>ご注意:</strong> 下の図は手順のイメージです。実際の画面ではありません。ボタンの場所や名前は、OS やブラウザのバージョン、端末の機種によって違うことがあります。見つからないときは、ブラウザのメニューの中から「ホーム画面に追加」を探してください。</p></aside>
+<h4>iPhone(Safari)</h4>
+<ol class="a2hs"><li><div class="mock" aria-hidden="true"><div class="m-page"></div><div class="m-bar m-bottom"><span class="m-url">attendance-hakata.github.io</span><span class="m-btn hit">…</span></div></div><div class="a2hs-text"><span class="flow-no">1</span><div><b>「…」をタップ</b><span>画面の下にある、アドレス欄の横の「…」を押します。下に共有ボタン(四角に上向きの矢印)があるときは、それを押して 3 へ進みます</span></div></div></li><li><div class="mock" aria-hidden="true"><div class="m-page"></div><div class="m-menu m-bottom"><div>ブックマークに追加</div><div>タブグループに移動</div><div class="m-row hit">共有 <span class="m-icon">⇪</span></div></div></div><div class="a2hs-text"><span class="flow-no">2</span><div><b>「共有」をタップ</b><span>メニューの中から「共有」を選びます</span></div></div></li><li><div class="mock" aria-hidden="true"><div class="m-page dim"></div><div class="m-sheet"><div>コピー</div><div>リーディングリストに追加</div><div class="m-row hit">ホーム画面に追加 <span class="m-icon">⊞</span></div></div></div><div class="a2hs-text"><span class="flow-no">3</span><div><b>「ホーム画面に追加」をタップ</b><span>出てきた一覧を上にずらすと見つかります</span></div></div></li><li><div class="mock" aria-hidden="true"><div class="m-head"><span>キャンセル</span><b>ホーム画面に追加</b><span class="hit">追加</span></div><div class="m-app"><span class="m-logo"></span><span>Attendance</span></div></div><div class="a2hs-text"><span class="flow-no">4</span><div><b>「追加」をタップ</b><span>右上の「追加」を押すと、ホーム画面にアイコンが出ます</span></div></div></li></ol>
+<ul><li>Safari で開いてください。iPhone では、ほかのブラウザだと「ホーム画面に追加」が出ないことがあります</li><li><strong>ホーム画面のアイコンから開いたときは、チームと名前の選択がもう一度必要です。</strong> iPhone では、Safari とホーム画面のアイコンとで、保存される内容が別々になるためです(パス入力も同じです)</li></ul>
+<h4>Android(Chrome)</h4>
+<ol class="a2hs"><li><div class="mock" aria-hidden="true"><div class="m-bar m-top"><span class="m-url">attendance-hakata.github.io</span><span class="m-btn hit">⋮</span></div><div class="m-page"></div></div><div class="a2hs-text"><span class="flow-no">1</span><div><b>「⋮」をタップ</b><span>画面の右上にある「⋮」(縦に並んだ3つの点)を押します</span></div></div></li><li><div class="mock" aria-hidden="true"><div class="m-bar m-top"><span class="m-url">attendance-hakata.github.io</span><span class="m-btn">⋮</span></div><div class="m-menu m-right"><div>新しいタブ</div><div>履歴</div><div class="m-row hit">ホーム画面に追加</div><div>設定</div></div></div><div class="a2hs-text"><span class="flow-no">2</span><div><b>「ホーム画面に追加」をタップ</b><span>「アプリをインストール」と出ることもあります。どちらでも同じです</span></div></div></li><li><div class="mock" aria-hidden="true"><div class="m-page dim"></div><div class="m-dialog"><b>ホーム画面に追加</b><div class="m-app"><span class="m-logo"></span><span>Attendance</span></div><div class="m-actions"><span>キャンセル</span><span class="hit">追加</span></div></div></div><div class="a2hs-text"><span class="flow-no">3</span><div><b>「追加」をタップ</b><span>確認が出たら「追加」(または「インストール」)を押します</span></div></div></li></ol>
+<ul><li>開いたときに、画面の下に「インストール」や「ホーム画面に追加」の案内が出ることがあります。それを押しても追加できます</li><li>Chrome 以外のブラウザでも、メニューの中に同じ名前の項目があれば追加できます</li></ul>
 <hr>
 <h2>2. 画面の構成</h2>
 <p>画面の下に、4つのタブがあります。右上には自分の名前が出ています。</p>

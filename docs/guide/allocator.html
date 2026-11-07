@@ -21,6 +21,7 @@ h1{font-size:28px;line-height:1.3;margin:16px 0 8px}
 h1 i{color:var(--acc);font-style:normal}
 h2{font-size:21px;margin:40px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--rule)}
 h3{font-size:17px;margin:28px 0 8px}
+h4{font-size:16px;margin:24px 0 8px;color:var(--acc)}
 p,ul,ol{margin:0 0 14px}
 ul,ol{padding-left:22px}
 li{margin:4px 0}
@@ -47,6 +48,36 @@ figcaption{margin-top:8px;color:var(--mute);font-size:13px;text-align:center}
 .types{display:flex;flex-direction:column;gap:8px;margin:8px 0 24px}
 .type-row{display:flex;gap:12px;align-items:flex-start;background:var(--sf);border:1px solid var(--rule);padding:10px 12px;font-size:14px;line-height:1.6}
 .type-tag{flex:none;min-width:84px;text-align:center;border:1px solid;padding:1px 8px;font-size:13px;font-weight:700}
+.a2hs{list-style:none;padding:0;margin:8px 0 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px}
+.a2hs li{margin:0;display:flex;flex-direction:column;gap:10px}
+.a2hs-text{display:flex;gap:8px;align-items:flex-start;font-size:14px;line-height:1.6}
+.a2hs-text b{display:block}
+.a2hs-text span:not(.flow-no){display:block;color:var(--mute);font-size:13px}
+.mock{position:relative;height:230px;border:2px solid #4a4c46;border-radius:18px;background:#f4f4f1;overflow:hidden;color:#222;font-size:11px;line-height:1.4}
+.mock .m-page{position:absolute;inset:0;background:repeating-linear-gradient(#f4f4f1 0 18px,#e3e3de 18px 20px)}
+.mock>*:not(.m-page){z-index:1}
+.mock .m-page.dim::after{content:'';position:absolute;inset:0;background:rgba(0,0,0,.35)}
+.mock .m-bar{position:absolute;left:0;right:0;display:flex;align-items:center;gap:6px;padding:8px;background:#fff;border-color:#ccc;border-style:solid;border-width:0}
+.mock .m-top{top:0;border-bottom-width:1px}
+.mock .m-bottom{bottom:0;border-top-width:1px}
+.mock .m-url{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;background:#e9e9e6;border-radius:8px;padding:4px 6px;font-size:10px}
+.mock .m-btn{flex:none;width:24px;height:24px;line-height:24px;text-align:center;font-size:15px;font-weight:700;border-radius:6px}
+.mock .m-menu{position:absolute;background:#fff;border-radius:10px;box-shadow:0 4px 14px rgba(0,0,0,.25);padding:4px 0;min-width:110px}
+.mock .m-menu.m-bottom{bottom:8px;right:8px;left:auto;border:0}
+.mock .m-menu.m-right{top:40px;right:6px}
+.mock .m-menu div,.mock .m-sheet div{padding:6px 10px;display:flex;justify-content:space-between;gap:6px}
+.mock .m-sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:14px 14px 0 0;padding:8px 4px 14px}
+.mock .m-icon{font-size:13px}
+.mock .m-head{position:relative;display:flex;justify-content:space-between;align-items:center;gap:2px;padding:10px 6px;background:#fff;border-bottom:1px solid #ccc;font-size:9px;white-space:nowrap}
+.mock .m-head b{font-size:9px}
+.mock .m-head span{color:#0a66d8;padding:2px 3px}
+.mock .m-app{display:flex;align-items:center;gap:8px;padding:12px 10px}
+.mock .m-logo{width:30px;height:30px;border-radius:8px;background:#0e0f0d url(../assets/apple-touch-icon.png) center/cover}
+.mock .m-dialog{position:absolute;left:10px;right:10px;top:60px;background:#fff;border-radius:12px;padding:12px}
+.mock .m-dialog .m-app{padding:10px 0}
+.mock .m-actions{display:flex;justify-content:flex-end;gap:14px;color:#0a66d8}
+.mock .m-actions span{padding:2px 4px}
+.mock .hit{outline:3px solid #7aa80c;outline-offset:1px;border-radius:6px;background:#eaf7c8;font-weight:700}
 </style>
 </head>
 <body>
@@ -60,7 +91,7 @@ figcaption{margin-top:8px;color:var(--mute);font-size:13px;text-align:center}
 <h2>1. 管理画面に入る</h2>
 <ol><li>下の「管理画面」タブをタップします</li><li><strong>チームのパス(数字4桁)</strong>を入力します(①。入力した数は●で表示されます)</li></ol>
 <figure><img src="img/alloc-01-pass.png" alt="パスの入力画面。①入力した桁数、②管理者用への切り替え(管理者だけが使います)" loading="lazy" width="390"><figcaption>パスの入力画面。①入力した桁数、②管理者用への切り替え(管理者だけが使います)</figcaption></figure>
-<ul><li>一度入力すると、その端末では次から入力なしで管理画面に入れます。期限はありません</li><li>管理者がチームのパスを変更したときは、もう一度入力が必要です</li><li>「← 戻る」でメンバー用の画面(ホーム)に戻れます</li></ul>
+<ul><li>一度入力すると、その端末では次から入力なしで管理画面に入れます。期限はありません</li><li>管理者がチームのパスを変更したときは、もう一度入力が必要です</li><li>iPhone でホーム画面に追加したアイコンから開くときは、Safari で入力していても、もう一度入力が必要です(保存される内容が別々のため)</li><li>「← 戻る」でメンバー用の画面(ホーム)に戻れます</li></ul>
 <p>管理画面の下のタブ:</p>
 <div class="table"><table><thead><tr><th>タブ</th><th>使える人</th><th>できること</th></tr></thead><tbody><tr><td>割り振り</td><td>割当担当のチームだけ</td><td>次の日曜の体育館の割当</td></tr><tr><td>カレンダー</td><td>パスを持つ全員</td><td>予定の登録・修正</td></tr><tr><td>メンバー管理</td><td>パスを持つ全員(自分のチームのみ)</td><td>名簿、連絡先、ホームの設定</td></tr><tr><td>連絡先</td><td>パスを持つ全員</td><td>各チームの代表・副代表の連絡先を見る</td></tr></tbody></table></div>
 <p>「割り振り」タブが出ないときは、あなたのチームが割当担当に設定されていません。管理者に相談してください。</p>
