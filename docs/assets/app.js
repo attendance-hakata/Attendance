@@ -237,7 +237,7 @@
     var html = '<div class="ob"><img src="' + 'assets/logo.png' + '" alt="Attendance">';
     if (!S.obTeam) {
       html += '<div class="ob-head"><h1><span>チームを</span><span>選んでください<i class="acc" style="font-style:normal">.</i></span></h1>' +
-        '<a class="ob-guide" href="' + guideUrl('user.html') + '" target="_blank" rel="noopener">使い方ガイド ↗</a></div><div class="ob-list">';
+        '<a class="ob-guide" href="' + guideUrl('user.html') + '" target="_blank" rel="noopener">使い方<wbr>ガイド</a></div><div class="ob-list">';
       S.boot.teams.forEach(function (t) {
         var size = S.boot.members.filter(function (m) { return m.teamId === t.id; }).length;
         html += '<button class="ob-item" data-a="obTeam" data-v="' + esc(t.id) + '"><u>' + esc(teamMark(t.name)) + '</u><strong>' + esc(t.name) +
@@ -245,7 +245,8 @@
       });
     } else {
       html += '<button class="ob-back" data-a="obBack">← チーム選択へ</button>' +
-        '<h1>' + esc(teamOf(S.obTeam).name) + '<i class="acc" style="font-style:normal">.</i></h1>' +
+        '<div class="ob-head"><h1>' + esc(teamOf(S.obTeam).name) + '<i class="acc" style="font-style:normal">.</i></h1>' +
+        '<a class="ob-guide" href="' + guideUrl('user.html') + '" target="_blank" rel="noopener">使い方<wbr>ガイド</a></div>' +
         '<p>あなたの名前を選んでください。</p><div class="ob-list">';
       S.boot.members.filter(function (m) { return m.teamId === S.obTeam; }).forEach(function (m) {
         html += '<button class="ob-item" data-a="obMember" data-v="' + esc(m.id) + '"><strong>' + esc(m.name) + '</strong><i>→</i></button>';
@@ -1037,7 +1038,7 @@
     var cols = ' style="grid-template-columns:repeat(' + (tabs.length + 1) + ',1fr)"';
     // 末尾は使い方ガイド(別タブで開く)。メンバー用の画面はユーザーガイド、管理画面は割当者ガイド
     var guide = '<a class="tab" href="' + guideUrl(isAdmin ? 'allocator.html' : 'user.html') + '" target="_blank" rel="noopener"><span>0' +
-      (tabs.length + 1) + '</span>ガイド ↗</a>';
+      (tabs.length + 1) + '</span>使い方ガイド</a>';
     return '<div class="tabs"' + cols + '>' + tabs.map(function (t, i) {
       return '<button class="tab' + (S.screen === t[0] ? ' on' : '') + '" data-a="tab" data-v="' + t[0] + '"><span>0' + (i + 1) + '</span>' + t[1] + '</button>';
     }).join('') + guide + '</div>';
