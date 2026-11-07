@@ -394,6 +394,8 @@ select.text-input{padding:0 8px}
 .user-guide{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin-top:14px;padding-top:14px;border-top:1px solid var(--rule);font-size:14px}
 .user-guide b{width:100%}
 .user-guide a{color:var(--acc);text-decoration:none}
+.guide-foot{margin:28px 0 8px;text-align:center;font-size:13px}
+.guide-foot a{color:var(--mute);text-decoration:underline;text-underline-offset:3px}
 .user-pass{display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:14px;border-top:1px solid var(--rule)}
 .user-pass b{font-size:14px}
 .user-pass ul{margin:0;padding-left:18px;font-size:13px;line-height:1.6;color:var(--mute)}

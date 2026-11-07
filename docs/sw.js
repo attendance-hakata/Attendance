@@ -1,6 +1,6 @@
 // Attendance の Service Worker。オフラインでも前回の表示を出し、通信回復後に更新する。
 // API(script.google.com への POST)は一切キャッシュせず、そのまま通す。
-var VERSION = 'att-v8';
+var VERSION = 'att-v9';
 var CORE = [
   './', 'index.html', 'config.js', 'manifest.webmanifest',
   'assets/app.js', 'assets/style.css', 'assets/logo.png',
