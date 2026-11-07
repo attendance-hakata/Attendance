@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ユーザーガイド | Attendance</title>
+<link rel="icon" href="../assets/favicon.png">
+<meta name="theme-color" content="#000000">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+:root{--bg:#0e0f0d;--sf:#1b1c19;--tx:#eeefe9;--mute:#868880;--rule:#272824;--acc:#c8f031;--warn:#ff9a3c;
+  --sans:'Geist','Zen Kaku Gothic New',sans-serif}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:16px;line-height:1.75}
+main{max-width:760px;margin:0 auto;padding:24px 16px 64px}
+.top{display:flex;gap:16px;flex-wrap:wrap;font-size:14px;margin-bottom:8px}
+a{color:var(--acc)}
+h1{font-size:28px;line-height:1.3;margin:16px 0 8px}
+h1 i{color:var(--acc);font-style:normal}
+h2{font-size:21px;margin:40px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--rule)}
+h3{font-size:17px;margin:28px 0 8px}
+p,ul,ol{margin:0 0 14px}
+ul,ol{padding-left:22px}
+li{margin:4px 0}
+li>ul,li>ol{margin:4px 0 0}
+strong{color:var(--acc);font-weight:700}
+code{font-family:'Geist Mono',monospace;background:var(--sf);padding:1px 6px;font-size:14px}
+hr{border:0;border-top:1px solid var(--rule);margin:32px 0}
+aside{background:var(--sf);border-left:3px solid var(--warn);padding:12px 16px;margin:0 0 16px}
+aside p:last-child,aside ul:last-child{margin-bottom:0}
+.table{overflow-x:auto;margin:0 0 16px}
+table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.6}
+th,td{border:1px solid var(--rule);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:var(--sf);white-space:nowrap}
+footer{margin-top:48px;color:var(--mute);font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<nav class="top"><a href="../">← アプリを開く</a><a href="allocator.html">割当者ガイド</a></nav>
+<h1>Attendance ユーザーガイド(メンバー向け)<i>.</i></h1>
+<p>毎週日曜の練習の出欠を、スマホから回答するためのアプリです。今週の体育館やチームの連絡もここで確認できます。</p>
+<ul><li>開くページ: <a href="https://attendance-hakata.github.io/Attendance/">https://attendance-hakata.github.io/Attendance/</a></li><li>ホーム画面に追加しておくと、アプリのようにすぐ開けます(ブラウザのメニューから「ホーム画面に追加」)</li><li>このガイドは、アプリの右上の名前 →「使い方」からも開けます</li></ul>
+<hr>
+<h2>1. はじめて開いたとき</h2>
+<ol><li>一覧から、自分の<strong>チーム</strong>を選びます</li><li>続けて、自分の<strong>名前</strong>を選びます</li></ol>
+<p>これで準備は完了です。パスワードの入力はありません。</p>
+<ul><li>選んだチームと名前は、この端末に保存されます。次からはそのままホームが開きます</li><li>保存に期限はありません</li><li>名前が一覧にないときは、チームの代表に追加を頼んでください</li></ul>
+<h3>選び直したいとき</h3>
+<p>右上の名前(チームの記号と名前のボタン)をタップし、「ログインを変更する」を押すと、チームと名前を選び直せます。</p>
+<hr>
+<h2>2. 画面の構成</h2>
+<p>画面の下に、4つのタブがあります。</p>
+<div class="table"><table><thead><tr><th>タブ</th><th>できること</th></tr></thead><tbody><tr><td>ホーム</td><td>今週の体育館、チームの出欠、連絡を見る</td></tr><tr><td>出欠</td><td>4週分の出欠とコメントを回答する</td></tr><tr><td>カレンダー</td><td>体育館の使用不可やチームの休みなどの予定を見る・登録する</td></tr><tr><td>管理画面</td><td>チームの代表や割当担当が使う画面です(パスが必要)。メンバーは使いません</td></tr></tbody></table></div>
+<hr>
+<h2>3. ホーム</h2>
+<p>次の日曜について、次のことがわかります。</p>
+<ul><li><strong>今週の体育館</strong><ul><li>決まると、体育館名、使用時間、一緒に練習するチームが表示されます</li><li>「地図を開く」で場所を確認できます</li><li>決まるまでは「土曜までに決まり、LINEでお知らせします。」と表示されます</li></ul></li><li><strong>練習休み</strong>: 全チームの練習が休みの週は、理由とともに表示されます</li><li><strong>単独練習</strong>: 自分のチームが割り振りを使わずに独自で練習する週は、「今週の練習 / 単独練習」として時間と場所が表示されます</li><li><strong>チーム休み</strong>: 自分のチームが休みの週は「チーム休み」と表示されます</li><li><strong>今週の予定</strong>: 体育館の使用不可やチームの休みなど、その日の予定です</li><li><strong>チームの出欠</strong>: 出席・欠席・未回答の人数と名前です。未定は、回答した人がいるときだけ表示されます</li><li><strong>今週の連絡</strong>: チーム内の掲示板です(→ 5章)</li><li><strong>個人コメント</strong>: メンバーが出欠画面で書いたコメントです</li></ul>
+<hr>
+<h2>4. 出欠の回答</h2>
+<ol><li>下の「出欠」タブを開きます</li><li>週ごとに「出席」「欠席」「未定」のどれかをタップします</li></ol>
+<ul><li><strong>タップした時点で保存されます。</strong> 保存ボタンはありません</li><li>4週先まで回答できます。予定がわかっている週は早めに回答してください</li><li>「締切済み」や「練習休み」と表示された週は、回答を変えられません。変えたいときはチームの代表に連絡してください</li></ul>
+<h3>コメント</h3>
+<p>各週の「コメント」をタップすると入力欄が開きます(100文字まで)。</p>
+<ul><li>例: 「遅れます」「途中で抜けます」</li><li><strong>入力欄から離れると保存されます</strong></li><li>その週になると、ホームの「個人コメント」にチームの全員から見える形で表示されます</li></ul>
+<hr>
+<h2>5. 今週の連絡(チームの掲示板)</h2>
+<p>ホームの「連絡を書く」をタップすると入力欄が開きます。内容を書いて「投稿する」を押してください(200文字まで)。</p>
+<ul><li>投稿は、同じチームのメンバー全員に見えます。投稿者の名前と時刻も表示されます</li><li>自分の投稿は「削除」で消せます。チームの代表などパスを持つ人も削除できます</li></ul>
+<hr>
+<h2>6. カレンダー</h2>
+<p>月ごとのカレンダーで、練習に関わる予定を確認できます。日付をタップすると、その日の予定が下に表示されます。</p>
+<div class="table"><table><thead><tr><th>色の種類</th><th>内容</th></tr></thead><tbody><tr><td>割振</td><td>体育館の割当(確定済みかどうか)</td></tr><tr><td>使用不可</td><td>学校行事などで体育館が使えない日</td></tr><tr><td>チーム休み</td><td>大会などでチームが練習を休む日</td></tr><tr><td>練習休み</td><td>全チームの練習が休みの日</td></tr><tr><td>単独練習</td><td>チームが割り振りを使わずに独自で練習する日</td></tr><tr><td>時間変更</td><td>その日だけ、体育館の使用時間が変わる日</td></tr><tr><td>その他</td><td>代表者ミーティングなど</td></tr></tbody></table></div>
+<p>上の種類のボタンをタップすると、表示を絞り込めます。</p>
+<p>練習時間は、特に決まりがなければ <strong>13:00〜17:00</strong> です。変わる日は、カレンダーの「時間変更」で確認できます。</p>
+<h3>予定を登録する</h3>
+<p>体育館が使えない日などがわかったら、登録をお願いします。</p>
+<ol><li>日付をタップし、「◯月◯日の予定を登録」を押します</li><li>種類を選び、必要な項目を入れて「登録」を押します</li></ol>
+<p>メンバーが登録できる種類:</p>
+<div class="table"><table><thead><tr><th>種類</th><th>入れる内容</th></tr></thead><tbody><tr><td>使用不可</td><td>体育館と理由</td></tr><tr><td>チーム休み</td><td>理由(チームは自分のチームに決まります)</td></tr><tr><td>単独練習</td><td>チーム、時間(最初は 13:00〜17:00)、場所(任意)。練習日(日曜)だけ選べます</td></tr><tr><td>その他</td><td>内容</td></tr></tbody></table></div>
+<ul><li><strong>登録した予定は、全員のカレンダーに表示されます</strong>(自分だけのメモではありません)</li><li>登録者として、あなたのチーム名と名前が残ります</li><li>単独練習は、どのチームの予定でも登録できます。他のチームからも見えます</li><li>次の日曜の割振がすでに作られているときは、その日の使用不可・チーム休み・単独練習は登録できません。割当担当に連絡してください</li><li>練習休みと時間変更は、割当担当が登録します</li><li>登録した予定は「編集」から修正・削除できます。他のチームの「チーム休み」は編集できません</li></ul>
+<hr>
+<h2>7. 困ったとき</h2>
+<div class="table"><table><thead><tr><th>こんなとき</th><th>どうする</th></tr></thead><tbody><tr><td>画面がエラーになる</td><td>時間をおいて「読み込み直す」を押してください</td></tr><tr><td>自分の名前がない、名前が違う</td><td>チームの代表に連絡してください</td></tr><tr><td>締め切った週の回答を変えたい</td><td>チームの代表、または割当担当に連絡してください</td></tr><tr><td>機種変更した</td><td>新しい端末で開き、チームと名前を選び直すだけです</td></tr><tr><td>他の人の端末で開いてしまった</td><td>右上の名前 →「ログインを変更する」で選び直してください</td></tr></tbody></table></div>
+<footer>Attendance 使い方ガイド。このページは manual/ の原稿から自動で作っています。</footer>
+</main>
+</body>
+</html>

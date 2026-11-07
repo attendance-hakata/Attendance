@@ -48,7 +48,7 @@
     // 管理画面のデータ。連絡先やパスを含むので端末には保存しない
     admin: { calendar: null, contacts: null, team: null, teamList: null, teamId: null, power: null },
     // メンバーのカレンダー(月表示)の状態
-    cal: { mode: 'member', ym: null, sel: '', filters: { assign: true, closed: true, rest: true, other: true }, sheet: null, form: null, confirmDel: false, confirmClosed: false, deleteId: null },
+    cal: { mode: 'member', ym: null, sel: '', filters: { assign: true, closed: true, rest: true, dayoff: true, solo: true, hours: true, other: true }, sheet: null, form: null, confirmDel: false, confirmClosed: false, deleteId: null },
     // 割り振り画面(モックアップ準拠)の状態。map は画面内の割当、決定でまとめて保存
     alloc: { screen: 'pick', gym: '', map: {}, pending: null, version: 0, lineText: '', copied: false }
   };
@@ -269,8 +269,19 @@
       '<span class="hero-side" id="heroSide"><b>SUN</b><span class="label">' + b.next.slice(0, 4) + '</span></span></div>';
 
     var view = b.allocation;
+    // 自チームの単独練習・チーム休み(カレンダーに登録された次の日曜の予定)
+    var mine = function (type) { return calEvents().filter(function (e) { return e.date === b.next && e.type === type && e.teamId === team.id; })[0]; };
+    var solo = !dayOff && mine('solo');
+    var rest = !dayOff && !solo && mine('rest');
     if (dayOff) {
       html += '<div class="day-off"><h2>練習休み</h2>' + (b.dayOffs[b.next] ? '<p>' + esc(b.dayOffs[b.next]) + '</p>' : '') + '</div>';
+    } else if (solo) {
+      html += '<div class="place"><div class="pair"><span>今週の練習</span><span>' + esc(team.name) + '</span></div>' +
+        '<h2>単独練習</h2>' + (solo.start ? '<p class="place-time">' + esc(calTime(solo)) + '</p>' : '') +
+        '<p>' + (solo.place ? '場所:' + esc(solo.place) : '場所はチームの連絡を確認してください') + '</p>' +
+        (solo.memo ? '<p>' + esc(solo.memo) + '</p>' : '') + '</div>';
+    } else if (rest) {
+      html += '<div class="day-off"><h2>チーム休み</h2><p>' + esc(rest.reason + (rest.memo ? '・' + rest.memo : '')) + '</p></div>';
     } else if (view.state === 'confirmed' && view.alloc[team.id]) {
       var gym = view.gyms.filter(function (g) { return g.id === view.alloc[team.id]; })[0];
       var mates = gym.teams.filter(function (t) { return t.id !== team.id; }).map(function (t) { return t.name; }).join('、') || 'なし(単独)';
@@ -429,7 +440,7 @@
     return allocA().allTeams.reduce(function (s, t) { return s + (S.alloc.map[t.id] === gymId ? t.yes : 0); }, 0);
   }
   function allocUnassigned() {
-    return allocA().allTeams.filter(function (t) { return !t.rest && t.yes > 0 && !S.alloc.map[t.id]; });
+    return allocA().allTeams.filter(function (t) { return !t.rest && !t.solo && t.yes > 0 && !S.alloc.map[t.id]; });
   }
   function allocWarnings() {
     var A = allocA(), w = [];
@@ -482,7 +493,7 @@
     var A = allocA(), list = (A && A.tempGyms) || [];
     var body = list.length
       ? '<div class="field-label">体育館</div><div class="form-row">' + selectInput('a:tempGym', list.map(function (g) { return [g.id, g.name]; }), list[0].id) + '</div>' +
-        '<div class="field-label">使用時間</div><div class="form-row">' + textInput('a:tempStart', '', '', 'time') + '<span class="time-sep">〜</span>' + textInput('a:tempEnd', '', '', 'time') + '</div>' +
+        '<div class="field-label">使用時間</div><div class="form-row">' + textInput('a:tempStart', calDefaultTime().start, '', 'time') + '<span class="time-sep">〜</span>' + textInput('a:tempEnd', calDefaultTime().end, '', 'time') + '</div>' +
         '<div class="conf-btns"><button class="ghost" style="height:56px" data-a="closeDialog">やめる</button><button class="go" data-a="addTempSlot">追加する</button></div>'
       : '<div class="conf-note">ホームになっていない体育館がありません。臨時で借りる体育館は、管理者メニューの体育館マスタで登録してください。</div>' +
         '<div class="conf-btns"><button class="ghost" style="height:56px" data-a="closeDialog">閉じる</button></div>';
@@ -508,8 +519,8 @@
       (canDrop ? '<button class="link danger" data-a="removeTempSlot" data-v="' + esc(active) + '">この臨時枠を外す</button>' : '') + '</div>' +
       '<div class="tot"><span class="big">' + curTotal + '</span>人<div class="sub">' + Math.floor(curTotal / ALLOC_UNIT) + 'チーム分</div></div></div>';
     var teams = A.allTeams.map(function (t) {
-      var a = S.alloc.map[t.id], here = a === active, off = t.rest, cls = '', st;
-      if (off) st = '休み';
+      var a = S.alloc.map[t.id], here = a === active, off = t.rest || t.solo, cls = '', st;
+      if (off) st = t.solo ? '単独練習' : '休み';
       else if (here) { st = 'この体育館に割振中'; cls = 'lime'; }
       else if (a) st = '割振済み：' + allocGymName(a);
       else { st = '未割当'; cls = 'warn'; }
@@ -553,11 +564,13 @@
     }).join('');
     var closed = A.closed.map(function (c) { return '<div class="plain"><span>' + esc(c.name) + '</span><span>' + esc(c.reason) + '</span></div>'; }).join('');
     var rest = A.allTeams.filter(function (t) { return t.rest; }).map(function (t) { return t.name; });
+    var solo = A.allTeams.filter(function (t) { return t.solo; }).map(function (t) { return t.name; });
     return '<div class="alloc-head"><div><div class="title-sm">最終確認<span class="acc">.</span></div>' +
       '<div class="alloc-when">' + allocDateLabel(S.boot.next) + 'の割当</div></div></div>' +
       (w.length ? '<div class="warns">' + w.map(function (x) { return '<div class="warn"><b>!</b><span>' + esc(x) + '</span></div>'; }).join('') + '</div>' : '') +
       cards + closed +
       '<div class="plain"><span>休み</span><span>' + esc(rest.length ? rest.join('、') : 'なし') + '</span></div>' +
+      (solo.length ? '<div class="plain"><span>単独練習</span><span>' + esc(solo.join('、')) + '</span></div>' : '') +
       '<div class="allocbar"><button class="ghost" data-a="allocBack">修正</button><button class="primary" style="flex:2" data-a="allocDecide">この内容で決定する</button></div>';
   }
 
@@ -580,9 +593,19 @@
     assign: { label: '割振', color: 'var(--acc)' },
     closed: { label: '使用不可', color: 'var(--warn)' },
     rest: { label: 'チーム休み', color: 'var(--blue)' },
+    dayoff: { label: '練習休み', color: 'var(--red)' },
+    solo: { label: '単独練習', color: 'var(--violet)' },
+    hours: { label: '時間変更', color: 'var(--teal)' },
     other: { label: 'その他', color: 'var(--tx)' }
   };
+  var CAL_ORDER = ['assign', 'closed', 'rest', 'dayoff', 'solo', 'hours', 'other'];
+  // 練習休みと時間変更は、管理画面のカレンダーで割振担当・管理者だけが登録できる
+  var CAL_ALLOC_ONLY = { dayoff: 1, hours: 1 };
   var CAL_REASONS = { closed: ['学校行事', '地域行事', '選挙・公共行事', 'その他'], rest: ['チームの都合', '大会・遠征', 'その他'] };
+  function calCanAlloc() { return S.cal.mode === 'admin' && canAllocate(); }
+  function calSlot(id) { return (S.boot.slots || []).filter(function (s) { return s.id === id; })[0]; }
+  function calTime(e) { return e.start ? e.start + '〜' + e.end : ''; }
+  function calDefaultTime() { return S.boot.defaultTime || { start: '13:00', end: '17:00' }; }
   var CAL_WD = ['日', '月', '火', '水', '木', '金', '土'];
 
   function calPad(n) { return (n < 10 ? '0' : '') + n; }
@@ -610,19 +633,27 @@
   function calDescribe(e) {
     if (e.type === 'closed') return { title: calGname(e.gymId) + '　使用不可', sub: e.reason + (e.memo ? '・' + e.memo : '') };
     if (e.type === 'rest') return { title: calTname(e.teamId) + '　休み', sub: e.reason + (e.memo ? '・' + e.memo : '') };
+    if (e.type === 'dayoff') return { title: '練習休み（全チーム）', sub: e.memo || '' };
+    if (e.type === 'solo') return { title: calTname(e.teamId) + '　単独練習', sub: [calTime(e), e.place, e.memo].filter(Boolean).join('・') };
+    if (e.type === 'hours') {
+      var sl = calSlot(e.gymId);
+      return { title: (sl ? sl.name : '練習枠') + '　時間変更', sub: calTime(e) + (e.memo ? '・' + e.memo : '') };
+    }
     return { title: e.memo || 'その他の予定', sub: '' };
   }
   function calTargetDates(f) { return f.date ? [f.date] : []; }
-  // 使用不可・チーム休みは、次の日曜(割振が作成済み)には登録させない。
+  // 使用不可・チーム休み・単独練習は、次の日曜(割振が作成済み)には登録させない。
   // 管理画面カレンダーで割当権限がある場合(管理者・割振担当)は解除する
   function calBlocked(f) {
     if (f.type === 'other') return false;
-    if (S.cal.mode === 'admin' && canAllocate()) return false;
+    if (calCanAlloc()) return false;
     var a = S.boot.allocation;
     return calTargetDates(f).indexOf(S.boot.next) >= 0 && !!a && !a.dayOff;
   }
   // 他チームの「チーム休み」は、管理者以外は編集できない(閲覧のみ)
+  // 練習休みと時間変更は、管理画面のカレンダーで割振担当・管理者だけが編集できる
   function canEditEvent(e) {
+    if (CAL_ALLOC_ONLY[e.type]) return calCanAlloc();
     var w = auth();
     if (w && w.role === 'power') return true;
     if (e.type !== 'rest') return true;
@@ -635,18 +666,36 @@
     var t = teamOf(m.teamId);
     return (t ? t.name + '・' : '') + m.name;
   }
-  function calCannotSave(f) { return !calTargetDates(f).length || calBlocked(f) || (f.type === 'other' && !String(f.memo).trim()) || (f.type === 'closed' && !f.gym); }
+  // 練習休み・単独練習・時間変更は練習日(日曜)だけ
+  function calNeedsSunday(f) { return (f.type === 'dayoff' || f.type === 'solo' || f.type === 'hours') && f.date && !calIsSun(f.date); }
+  function calBadTime(f) { return (f.type === 'solo' || f.type === 'hours') && !(f.start && f.end && f.start < f.end); }
+  function calCannotSave(f) {
+    return !calTargetDates(f).length || calBlocked(f) || calNeedsSunday(f) || calBadTime(f) ||
+      (f.type === 'other' && !String(f.memo).trim()) || (f.type === 'closed' && !f.gym) ||
+      (f.type === 'hours' && !calSlot(f.slot)) || (f.type === 'solo' && !f.team);
+  }
   function calSheetWarn(f) {
-    return calBlocked(f)
-      ? calMd(S.boot.next) + 'はすでに割振が作成されているため、ここからは登録・変更できません。変更が必要な場合は割振担当にご連絡ください。'
-      : '';
+    if (calBlocked(f)) return calMd(S.boot.next) + 'はすでに割振が作成されているため、ここからは登録・変更できません。変更が必要な場合は割振担当にご連絡ください。';
+    if (calNeedsSunday(f)) return CAL_TYPES[f.type].label + 'は練習日(日曜)を選んでください。';
+    if (calBadTime(f)) return '終了は開始より後の時間にしてください。';
+    return '';
+  }
+  // 時間変更の初期値は、選んだ練習枠の今の時間
+  function calSlotTime(f) {
+    var sl = calSlot(f.slot);
+    if (sl) { f.start = sl.start; f.end = sl.end; }
   }
   function calNewForm() {
-    var sel = S.cal.sel, today = S.boot.today;
-    return { id: null, type: 'closed', date: sel >= today ? sel : today, gym: myHomeGym(), team: myTeamId(), reason: CAL_REASONS.closed[0], memo: '' };
+    var sel = S.cal.sel, today = S.boot.today, t = calDefaultTime();
+    var slots = S.boot.slots || [];
+    return { id: null, type: 'closed', date: sel >= today ? sel : today, gym: myHomeGym(), team: myTeamId(), reason: CAL_REASONS.closed[0], memo: '',
+      slot: slots.length ? slots[0].id : '', start: t.start, end: t.end, place: '' };
   }
   function calEditForm(e) {
-    return { id: e.id, type: e.type, date: e.date, gym: e.gymId || myHomeGym(), team: e.teamId || myTeamId(), reason: e.reason || (CAL_REASONS[e.type] ? CAL_REASONS[e.type][0] : ''), memo: e.memo || '' };
+    var t = calDefaultTime(), slots = S.boot.slots || [];
+    return { id: e.id, type: e.type, date: e.date, gym: e.type === 'closed' ? e.gymId : myHomeGym(), team: e.teamId || myTeamId(),
+      reason: e.reason || (CAL_REASONS[e.type] ? CAL_REASONS[e.type][0] : ''), memo: e.memo || '',
+      slot: e.type === 'hours' ? e.gymId : (slots.length ? slots[0].id : ''), start: e.start || t.start, end: e.end || t.end, place: e.place || '' };
   }
 
   function viewCal() {
@@ -671,7 +720,7 @@
       var cls = 'cday' + (d.getMonth() !== m ? ' out' : '') + (d.getDay() === 0 && d.getMonth() === m ? ' sun' : '') + (t === today ? ' today' : '') + (t === c.sel ? ' sel' : '');
       cells += '<button class="' + cls + '" data-a="calPick" data-v="' + t + '"><span class="cn">' + d.getDate() + '</span><span class="cbars">' + bars + '</span></button>';
     }
-    var chips = ['assign', 'closed', 'rest', 'other'].map(function (k) {
+    var chips = CAL_ORDER.map(function (k) {
       return '<button class="cchip' + (c.filters[k] ? '' : ' off') + '" data-a="calFilter" data-v="' + k + '"><i style="background:' + CAL_TYPES[k].color + '"></i>' + CAL_TYPES[k].label + '</button>';
     }).join('');
 
@@ -709,7 +758,8 @@
   // 登録・修正シート(メンバーが登録。登録者＝本人。全員に共有される)
   function viewEventSheet() {
     var f = S.cal.form, isEdit = !!f.id;
-    var types = ['closed', 'rest', 'other'].map(function (k) {
+    // 練習休みと時間変更は、割振担当・管理者(管理画面のカレンダー)だけに出す
+    var types = CAL_ORDER.filter(function (k) { return k !== 'assign' && (!CAL_ALLOC_ONLY[k] || calCanAlloc()); }).map(function (k) {
       var on = f.type === k, col = CAL_TYPES[k].color;
       return '<button data-a="evType" data-v="' + k + '"' + (on ? ' class="on" style="border-color:' + col + ';color:' + col + '"' : '') + '>' + CAL_TYPES[k].label + '</button>';
     }).join('');
@@ -736,16 +786,41 @@
         teamField = '<label class="cfld"><span>チーム</span><div class="evby">' + esc(tn) + '</div><span class="chint">自分のチームの休みを登録します</span></label>';
       }
     }
-    var reasonField = f.type === 'other' ? '' : '<label class="cfld"><span>理由</span><select data-evfield="reason">'
+    if (f.type === 'solo') {
+      // 単独練習は、どのチームの予定でも登録できる(初期値は自分のチーム)
+      teamField = '<label class="cfld"><span>チーム</span><select data-evfield="team">'
+        + (S.boot.teams || []).map(function (t) { return '<option value="' + t.id + '"' + (t.id === f.team ? ' selected' : '') + '>' + esc(t.name) + '</option>'; }).join('')
+        + '</select><span class="chint">このチームは割り振りの対象外になります</span></label>';
+    }
+    var slotField = '';
+    if (f.type === 'hours') {
+      var slots = S.boot.slots || [];
+      slotField = '<label class="cfld"><span>練習枠</span>' + (slots.length
+        ? '<select data-evfield="slot">' + slots.map(function (s) {
+          return '<option value="' + esc(s.id) + '"' + (s.id === f.slot ? ' selected' : '') + '>' + esc(s.name + '（通常 ' + s.start + '〜' + s.end + '）') + '</option>';
+        }).join('') + '</select>'
+        : '<div class="evby">ホームに設定された練習枠がありません</div>') + '</label>';
+    }
+    var placeField = f.type === 'solo'
+      ? '<label class="cfld"><span>場所（任意）</span><input type="text" data-evfield="place" maxlength="50" value="' + esc(f.place) + '" placeholder="例：市民体育館"></label>'
+      : '';
+    var timeField = (f.type === 'solo' || f.type === 'hours')
+      ? '<div class="cfld"><span>' + (f.type === 'hours' ? '新しい時間' : '時間') + '</span><div class="form-row">'
+        + '<input class="text-input" type="time" data-evfield="start" value="' + esc(f.start) + '"><span class="time-sep">〜</span>'
+        + '<input class="text-input" type="time" data-evfield="end" value="' + esc(f.end) + '"></div></div>'
+      : '';
+    var reasonField = !CAL_REASONS[f.type] ? '' : '<label class="cfld"><span>理由</span><select data-evfield="reason">'
       + CAL_REASONS[f.type].map(function (r) { return '<option' + (r === f.reason ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select></label>';
-    var memoPh = f.type === 'closed' ? '例：運動会' : f.type === 'rest' ? '例：大会参加のため' : '例：代表者ミーティング';
-    var memoField = '<label class="cfld"><span>' + (f.type === 'other' ? '内容' : 'メモ（任意）') + '</span><input type="text" data-evfield="memo" maxlength="100" value="' + esc(f.memo) + '" placeholder="' + memoPh + '"></label>';
+    var memoPh = { closed: '例：運動会', rest: '例：大会参加のため', dayoff: '例：年末のため', solo: '例：練習試合', hours: '例：学校行事のため短縮', other: '例：代表者ミーティング' }[f.type];
+    var memoLabel = f.type === 'other' ? '内容' : f.type === 'dayoff' ? '理由（任意）' : 'メモ（任意）';
+    var memoField = '<label class="cfld"><span>' + memoLabel + '</span><input type="text" data-evfield="memo" maxlength="100" value="' + esc(f.memo) + '" placeholder="' + memoPh + '"></label>';
+    var dayoffNote = f.type === 'dayoff' ? '<div class="chint warn">全チームの練習が休みになります。この日の割り振りは作られず、出欠も回答できなくなります。</div>' : '';
     var w = calSheetWarn(f);
     return '<div class="scrim" data-a="closeEvSheet" data-self="1"><div class="evsheet" data-a="noop">'
       + '<div class="evhd"><b>' + (isEdit ? '予定を修正' : '予定を登録') + '</b><button class="evx" data-a="closeEvSheet">×</button></div>'
       + '<div class="share-note"><b>！</b><span>この予定は<em>全員のカレンダー</em>に反映されます（自分だけのメモではありません）。</span></div>'
       + '<div class="cfld"><span>種類</span><div class="cseg3">' + types + '</div></div>'
-      + dateField + gymField + teamField + reasonField + memoField
+      + dateField + gymField + teamField + slotField + placeField + timeField + reasonField + memoField + dayoffNote
       + '<div class="cfld"><span>登録者</span><div class="evby">' + esc(eventBy()) + '</div></div>'
       + (w ? '<div class="cwbox">' + esc(w) + '</div>' : '')
       + '<div class="evrow">' + (isEdit ? '<button class="cbtn warn" data-a="askDeleteEvent">削除</button>' : '')
@@ -846,9 +921,11 @@
       var users = (g.users || []).map(function (u) { return u.name + (u.start ? ' ' + u.start + '〜' + u.end : ''); });
       return [g.id, g.name + (users.length ? '（' + users.join('・') + '）' : '')];
     }));
+    // 時間が未設定なら、練習時間の基本(13:00〜17:00)を初期値にする
+    var dt = calDefaultTime();
     html += '<div class="form-row"><span class="home-label">体育館</span>' + selectInput('t:home:gym', gymOptions, home ? home.id : '') + '</div>' +
-      '<div class="form-row"><span class="home-label">時間</span>' + textInput('t:home:start', home ? home.start : '', '', 'time') + '<span class="time-sep">〜</span>' +
-      textInput('t:home:end', home ? home.end : '', '', 'time') + '<button class="sub-btn" data-a="saveHomeGym">保存</button></div>';
+      '<div class="form-row"><span class="home-label">時間</span>' + textInput('t:home:start', home && home.start ? home.start : dt.start, '', 'time') + '<span class="time-sep">〜</span>' +
+      textInput('t:home:end', home && home.end ? home.end : dt.end, '', 'time') + '<button class="sub-btn" data-a="saveHomeGym">保存</button></div>';
     if (home && home.shared && home.shared.length) {
       html += '<div class="note-line">' + esc(home.shared.join('・')) + 'と同じ枠(同じ体育館・同じ時間)で練習します。</div>';
     }
@@ -1010,6 +1087,13 @@
   }
 
   // 名前を押したときの画面の下半分。管理画面のパスが入力済みのときだけ、解除ボタンと影響の説明を出す
+  // 使い方ガイド(GitHub Pages の docs/guide/)。割当者ガイドはパスを入力済みの人にだけ出す
+  function viewGuideLinks() {
+    var base = window.GUIDE_BASE || 'https://attendance-hakata.github.io/Attendance/guide/';
+    return '<div class="user-guide"><b>使い方</b><a href="' + base + 'user.html" target="_blank" rel="noopener">ユーザーガイド ↗</a>' +
+      (auth() ? '<a href="' + base + 'allocator.html" target="_blank" rel="noopener">割当者ガイド ↗</a>' : '') + '</div>';
+  }
+
   function viewUserPass() {
     var w = auth();
     if (!w) return '';
@@ -1030,7 +1114,7 @@
     if (S.dialog === 'user') {
       return '<div class="scrim" data-a="closeDialog"><div class="sheet sheet-user" data-a="noop"><h3>' + esc(member.name) + 'さん / ' + esc(team.name) + '</h3>' +
         '<p>この端末に、メンバーの選択を保存しています。</p><button class="ghost strong" data-a="changeUser">ログインを変更する</button>' +
-        viewUserPass() + '</div></div>';
+        viewGuideLinks() + viewUserPass() + '</div></div>';
     }
     if (S.dialog === 'code') return viewPass();
     if (S.dialog === 'deleteComment') return viewConfirmSheet('このコメントを削除しますか?', '削除すると元に戻せません。', 'deleteComment', '削除する');
@@ -1227,7 +1311,7 @@
       setBoot(result.boot);
       if (onOk) onOk();
       render();
-      if (message) toast(message);
+      if (message) toast(message + (result.gcalError ? '(' + result.gcalError + ')' : ''));
     } else {
       toast(result.message);
     }
@@ -1423,7 +1507,7 @@
     askTempSlot: function () { clearDrafts('a:temp'); S.dialog = 'tempSlot'; render(); },
     addTempSlot: function () {
       var A = allocA(), list = A.tempGyms || [];
-      var gymId = draft('a:tempGym', list[0] ? list[0].id : ''), start = draft('a:tempStart', ''), end = draft('a:tempEnd', '');
+      var gymId = draft('a:tempGym', list[0] ? list[0].id : ''), start = draft('a:tempStart', calDefaultTime().start), end = draft('a:tempEnd', calDefaultTime().end);
       if (!gymId) return;
       if (!start || !end) { toast('使用時間を入力してください'); return; }
       call('apiAddTempSlot', [token(), S.boot.next, gymId, start, end], function (result) {
@@ -1505,6 +1589,10 @@
     evType: function (v) {
       var f = S.cal.form; f.type = v; f.reason = CAL_REASONS[v] ? CAL_REASONS[v][0] : '';
       if (!f.gym) f.gym = myHomeGym();
+      if (!f.team) f.team = myTeamId();
+      // 時間の初期値: 時間変更は練習枠の今の時間、単独練習は練習時間の基本
+      if (v === 'hours') calSlotTime(f);
+      else if (v === 'solo') { var t = calDefaultTime(); f.start = t.start; f.end = t.end; }
       render();
     },
     saveEvent: function () {
@@ -1520,7 +1608,9 @@
       var f = S.cal.form;
       var isEdit = !!f.id;
       // フォームの gym/team を API の gymId/teamId に合わせて送る
-      var payload = { id: f.id, type: f.type, date: f.date, gymId: f.gym, teamId: f.team, reason: f.reason, memo: f.memo };
+      // 時間変更の gymId は練習枠の ID
+      var payload = { id: f.id, type: f.type, date: f.date, gymId: f.type === 'hours' ? f.slot : f.gym, teamId: f.team, reason: f.reason, memo: f.memo,
+        start: f.start, end: f.end, place: f.place };
       var onDone = function (r) {
         calApply(r, isEdit ? '予定を修正しました' : '予定を登録しました', function () {
           if (f.date) { var dd = calParse(f.date); S.cal.ym = [dd.getFullYear(), dd.getMonth()]; S.cal.sel = f.date; }
@@ -1603,8 +1693,10 @@
     saveHomeGym: function () {
       var t = S.admin.team, h = t.homeGym;
       var gymId = draft('t:home:gym', h ? h.id : '');
-      var start = gymId ? draft('t:home:start', h ? h.start : '') : '';
-      var end = gymId ? draft('t:home:end', h ? h.end : '') : '';
+      // 画面に出している初期値(未設定なら練習時間の基本)と同じ値を使う
+      var dt = calDefaultTime();
+      var start = gymId ? draft('t:home:start', h && h.start ? h.start : dt.start) : '';
+      var end = gymId ? draft('t:home:end', h && h.end ? h.end : dt.end) : '';
       if (gymId === (h ? h.id : '') && (!gymId || (start === h.start && end === h.end))) { toast('変更はありません'); return; }
       if (gymId && (!start) !== (!end)) { toast('開始と終了の両方を入力してください'); return; }
       adminCall('apiSetHomeGym', [t.teamId, gymId, start, end], 'ホームを保存しました', { clear: 't:home:', busy: '保存中…' });
@@ -1683,8 +1775,8 @@
     if (key) S.drafts[key] = event.target.value;
     // カレンダーのメモは再描画せず値だけ保持し、登録ボタンの有効/無効だけ更新する
     var ef = event.target.getAttribute('data-evfield');
-    if (ef === 'memo' && S.cal.form) {
-      S.cal.form.memo = event.target.value;
+    if ((ef === 'memo' || ef === 'place') && S.cal.form) {
+      S.cal.form[ef] = event.target.value;
       var save = document.querySelector('[data-a="saveEvent"]');
       if (save) save.disabled = calCannotSave(S.cal.form);
     }
@@ -1699,7 +1791,8 @@
     var ef = event.target.getAttribute('data-evfield');
     if (ef && S.cal.form) {
       S.cal.form[ef] = event.target.value;
-      if (ef !== 'memo') render();
+      if (ef === 'slot') calSlotTime(S.cal.form);
+      if (ef !== 'memo' && ef !== 'place') render();
     }
   });
   // 体育館マスタの並び替え(⋮⋮ をドラッグ)。マウス・タッチ共通で Pointer Events を使い、

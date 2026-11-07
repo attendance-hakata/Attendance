@@ -1,6 +1,6 @@
 /* デザイントークン(README の確定デザイン 7a) */
 :root{--bg:#0e0f0d;--sf:#1b1c19;--tx:#eeefe9;--mute:#868880;--rule:#272824;--acc:#c8f031;--onacc:#0e0f0d;
-  --warn:#ff9a3c;--blue:#6cb4ff;
+  --warn:#ff9a3c;--blue:#6cb4ff;--red:#ff6b6b;--violet:#b993ff;--teal:#4fd1c5;
   --sans:'Geist','Zen Kaku Gothic New',sans-serif;--mono:'Geist Mono',monospace}
 *{box-sizing:border-box;border-radius:0;scrollbar-width:none;-webkit-tap-highlight-color:transparent}
 *::-webkit-scrollbar{display:none}
@@ -391,6 +391,9 @@ select.text-input{padding:0 8px}
 .sheet-user{gap:8px}
 .sheet-user h3{font-size:22px;border:none;padding:0}
 .sheet-user p{font-size:13px;color:var(--mute);margin:0 0 6px}
+.user-guide{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin-top:14px;padding-top:14px;border-top:1px solid var(--rule);font-size:14px}
+.user-guide b{width:100%}
+.user-guide a{color:var(--acc);text-decoration:none}
 .user-pass{display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:14px;border-top:1px solid var(--rule)}
 .user-pass b{font-size:14px}
 .user-pass ul{margin:0;padding-left:18px;font-size:13px;line-height:1.6;color:var(--mute)}

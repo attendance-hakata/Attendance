@@ -14,3 +14,5 @@
 | `docs/assets/style.css` | スタイル |
 | `docs/assets/app.js` | 画面の処理 |
 | `docs/config.js` | GAS の公開 API（exec）URL |
+| `docs/guide/user.html` | 使い方ガイド（メンバー向け） |
+| `docs/guide/allocator.html` | 使い方ガイド（割当担当・チーム代表向け） |
