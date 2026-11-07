@@ -236,7 +236,8 @@
   function viewOnboard() {
     var html = '<div class="ob"><img src="' + 'assets/logo.png' + '" alt="Attendance">';
     if (!S.obTeam) {
-      html += '<h1><span>チームを</span><span>選んでください<i class="acc" style="font-style:normal">.</i></span></h1><div class="ob-list">';
+      html += '<div class="ob-head"><h1><span>チームを</span><span>選んでください<i class="acc" style="font-style:normal">.</i></span></h1>' +
+        '<a class="ob-guide" href="' + guideUrl('user.html') + '" target="_blank" rel="noopener">使い方ガイド ↗</a></div><div class="ob-list">';
       S.boot.teams.forEach(function (t) {
         var size = S.boot.members.filter(function (m) { return m.teamId === t.id; }).length;
         html += '<button class="ob-item" data-a="obTeam" data-v="' + esc(t.id) + '"><u>' + esc(teamMark(t.name)) + '</u><strong>' + esc(t.name) +
@@ -250,7 +251,7 @@
         html += '<button class="ob-item" data-a="obMember" data-v="' + esc(m.id) + '"><strong>' + esc(m.name) + '</strong><i>→</i></button>';
       });
     }
-    return html + '</div>' + viewGuideFoot(false) + '</div>';
+    return html + '</div></div>';
   }
 
   function viewHeader(isAdmin, member, team) {
@@ -1033,10 +1034,13 @@
       ? (canAllocate() ? [['alloc', '割り振り']] : []).concat([['calendar', 'カレンダー'], ['team', 'メンバー管理'], ['contacts', '連絡先']])
       : [['home', 'ホーム'], ['answer', '出欠'], ['calendar', 'カレンダー'], ['admin', '管理画面']];
     if (isAdmin && who && who.role === 'power') tabs.push(['power', '管理者']);
-    var cols = ' style="grid-template-columns:repeat(' + tabs.length + ',1fr)"';
+    var cols = ' style="grid-template-columns:repeat(' + (tabs.length + 1) + ',1fr)"';
+    // 末尾は使い方ガイド(別タブで開く)。メンバー用の画面はユーザーガイド、管理画面は割当者ガイド
+    var guide = '<a class="tab" href="' + guideUrl(isAdmin ? 'allocator.html' : 'user.html') + '" target="_blank" rel="noopener"><span>0' +
+      (tabs.length + 1) + '</span>ガイド ↗</a>';
     return '<div class="tabs"' + cols + '>' + tabs.map(function (t, i) {
       return '<button class="tab' + (S.screen === t[0] ? ' on' : '') + '" data-a="tab" data-v="' + t[0] + '"><span>0' + (i + 1) + '</span>' + t[1] + '</button>';
-    }).join('') + '</div>';
+    }).join('') + guide + '</div>';
   }
 
   function viewError() {
@@ -1094,11 +1098,6 @@
   function viewGuideLinks() {
     return '<div class="user-guide"><b>使い方</b><a href="' + guideUrl('user.html') + '" target="_blank" rel="noopener">ユーザーガイド ↗</a>' +
       (auth() ? '<a href="' + guideUrl('allocator.html') + '" target="_blank" rel="noopener">割当者ガイド ↗</a>' : '') + '</div>';
-  }
-  // 画面の一番下に出す、使い方ガイドへのリンク。メンバー用の画面はユーザーガイド、管理画面は割当者ガイド
-  function viewGuideFoot(admin) {
-    return '<p class="guide-foot"><a href="' + guideUrl(admin ? 'allocator.html' : 'user.html') + '" target="_blank" rel="noopener">' +
-      (admin ? '割当者ガイド(管理画面の使い方)' : '使い方ガイド') + ' ↗</a></p>';
   }
 
   function viewUserPass() {
@@ -1191,8 +1190,6 @@
       : S.screen === 'team' ? viewTeamAdmin()
       : S.screen === 'power' ? viewPowerAdmin()
       : viewHome(member, team);
-    if (S.screen === 'home') body += viewGuideFoot(false);
-    else if (isAdmin && S.screen !== 'power' && auth()) body += viewGuideFoot(true);
     app.innerHTML = viewHeader(isAdmin, member, team) +
       '<div class="main" id="mainScroll" data-screen="' + S.screen + '">' + body + '</div>' + viewTabs(isAdmin);
     document.getElementById('mainScroll').scrollTop = keepScroll;
