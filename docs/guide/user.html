@@ -35,6 +35,18 @@ table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.6}
 th,td{border:1px solid var(--rule);padding:8px 10px;text-align:left;vertical-align:top}
 th{background:var(--sf);white-space:nowrap}
 footer{margin-top:48px;color:var(--mute);font-size:13px}
+figure{margin:8px auto 24px;max-width:360px}
+figure img{display:block;width:100%;height:auto;border:1px solid var(--rule);border-radius:12px}
+figcaption{margin-top:8px;color:var(--mute);font-size:13px;text-align:center}
+.flow{list-style:none;padding:0;margin:8px 0 24px;counter-reset:none}
+.flow li{position:relative;display:flex;gap:12px;align-items:flex-start;background:var(--sf);border:1px solid var(--rule);padding:12px 14px;margin:0 0 22px}
+.flow li:not(:last-child)::after{content:'↓';position:absolute;left:24px;bottom:-21px;color:var(--acc);font-size:15px;line-height:20px}
+.flow-no{flex:none;width:26px;height:26px;border-radius:50%;background:var(--acc);color:#0e0f0d;font-weight:700;font-size:14px;line-height:26px;text-align:center}
+.flow b{display:block}
+.flow li span:not(.flow-no){display:block;color:var(--mute);font-size:14px;line-height:1.6}
+.types{display:flex;flex-direction:column;gap:8px;margin:8px 0 24px}
+.type-row{display:flex;gap:12px;align-items:flex-start;background:var(--sf);border:1px solid var(--rule);padding:10px 12px;font-size:14px;line-height:1.6}
+.type-tag{flex:none;min-width:84px;text-align:center;border:1px solid;padding:1px 8px;font-size:13px;font-weight:700}
 </style>
 </head>
 <body>
@@ -46,21 +58,25 @@ footer{margin-top:48px;color:var(--mute);font-size:13px}
 <hr>
 <h2>1. はじめて開いたとき</h2>
 <ol><li>一覧から、自分の<strong>チーム</strong>を選びます</li><li>続けて、自分の<strong>名前</strong>を選びます</li></ol>
+<figure><img src="img/user-01-team.png" alt="① 自分のチームを選ぶ(画面はサンプルです)" loading="lazy" width="390"><figcaption>① 自分のチームを選ぶ(画面はサンプルです)</figcaption></figure>
+<figure><img src="img/user-02-name.png" alt="② 自分の名前を選ぶ" loading="lazy" width="390"><figcaption>② 自分の名前を選ぶ</figcaption></figure>
 <p>これで準備は完了です。パスワードの入力はありません。</p>
 <ul><li>選んだチームと名前は、この端末に保存されます。次からはそのままホームが開きます</li><li>保存に期限はありません</li><li>名前が一覧にないときは、チームの代表に追加を頼んでください</li></ul>
 <h3>選び直したいとき</h3>
 <p>右上の名前(チームの記号と名前のボタン)をタップし、「ログインを変更する」を押すと、チームと名前を選び直せます。</p>
 <hr>
 <h2>2. 画面の構成</h2>
-<p>画面の下に、4つのタブがあります。</p>
-<div class="table"><table><thead><tr><th>タブ</th><th>できること</th></tr></thead><tbody><tr><td>ホーム</td><td>今週の体育館、チームの出欠、連絡を見る</td></tr><tr><td>出欠</td><td>4週分の出欠とコメントを回答する</td></tr><tr><td>カレンダー</td><td>体育館の使用不可やチームの休みなどの予定を見る・登録する</td></tr><tr><td>管理画面</td><td>チームの代表や割当担当が使う画面です(パスが必要)。メンバーは使いません</td></tr></tbody></table></div>
+<p>画面の下に、4つのタブがあります。右上には自分の名前が出ています。</p>
+<figure><img src="img/user-03-home.png" alt="ホーム画面。①〜④が下のタブ、⑤が自分の名前" loading="lazy" width="390"><figcaption>ホーム画面。①〜④が下のタブ、⑤が自分の名前</figcaption></figure>
+<div class="table"><table><thead><tr><th>番号</th><th>場所</th><th>できること</th></tr></thead><tbody><tr><td>①</td><td>ホーム</td><td>今週の体育館、チームの出欠、連絡を見る</td></tr><tr><td>②</td><td>出欠</td><td>4週分の出欠とコメントを回答する</td></tr><tr><td>③</td><td>カレンダー</td><td>体育館の使用不可やチームの休みなどの予定を見る・登録する</td></tr><tr><td>④</td><td>管理画面</td><td>チームの代表や割当担当が使う画面です(パスが必要)。メンバーは使いません</td></tr><tr><td>⑤</td><td>自分の名前</td><td>選び直し、使い方ガイドを開く</td></tr></tbody></table></div>
 <hr>
 <h2>3. ホーム</h2>
 <p>次の日曜について、次のことがわかります。</p>
-<ul><li><strong>今週の体育館</strong><ul><li>決まると、体育館名、使用時間、一緒に練習するチームが表示されます</li><li>「地図を開く」で場所を確認できます</li><li>決まるまでは「土曜までに決まり、LINEでお知らせします。」と表示されます</li></ul></li><li><strong>練習休み</strong>: 全チームの練習が休みの週は、理由とともに表示されます</li><li><strong>単独練習</strong>: 自分のチームが割り振りを使わずに独自で練習する週は、「今週の練習 / 単独練習」として時間と場所が表示されます</li><li><strong>チーム休み</strong>: 自分のチームが休みの週は「チーム休み」と表示されます</li><li><strong>今週の予定</strong>: 体育館の使用不可やチームの休みなど、その日の予定です</li><li><strong>チームの出欠</strong>: 出席・欠席・未回答の人数と名前です。未定は、回答した人がいるときだけ表示されます</li><li><strong>今週の連絡</strong>: チーム内の掲示板です(→ 5章)</li><li><strong>個人コメント</strong>: メンバーが出欠画面で書いたコメントです</li></ul>
+<ul><li><strong>今週の体育館</strong><ul><li>決まると、体育館名、使用時間、一緒に練習するチームが表示されます</li><li>「地図を開く」で場所を確認できます</li><li>決まるまでは「土曜までに決まり、LINEでお知らせします。」と表示されます</li></ul></li><li><strong>練習休み</strong>: 全チームの練習が休みの週は、理由とともに表示されます</li><li><strong>単独練習</strong>: 自分のチームが割り振りを使わずに独自で練習する週は、「今週の練習 / 単独練習」として時間と場所が表示されます</li><li><strong>チーム休み</strong>: 自分のチームが休みの週は「チーム休み」と表示されます</li><li><strong>今週の予定</strong>: 体育館の使用不可やチームの休みなど、その日の予定です</li><li><strong>チームの出欠</strong>: 出席(参加)・欠席(不参加)・未回答の人数と名前です。未定は、回答した人がいるときだけ表示されます</li><li><strong>今週の連絡</strong>: チーム内の掲示板です(→ 5章)</li><li><strong>個人コメント</strong>: メンバーが出欠画面で書いたコメントです</li></ul>
 <hr>
 <h2>4. 出欠の回答</h2>
-<ol><li>下の「出欠」タブを開きます</li><li>週ごとに「出席」「欠席」「未定」のどれかをタップします</li></ol>
+<ol><li>下の「出欠」タブを開きます</li><li>週ごとに「参加」「不参加」「未定」のどれかをタップします(①)</li><li>必要なら「コメント」をタップして入力します(②)</li></ol>
+<figure><img src="img/user-04-answer.png" alt="出欠画面。①回答のボタン、②コメント" loading="lazy" width="390"><figcaption>出欠画面。①回答のボタン、②コメント</figcaption></figure>
 <ul><li><strong>タップした時点で保存されます。</strong> 保存ボタンはありません</li><li>4週先まで回答できます。予定がわかっている週は早めに回答してください</li><li>「締切済み」や「練習休み」と表示された週は、回答を変えられません。変えたいときはチームの代表に連絡してください</li></ul>
 <h3>コメント</h3>
 <p>各週の「コメント」をタップすると入力欄が開きます(100文字まで)。</p>
@@ -73,11 +89,13 @@ footer{margin-top:48px;color:var(--mute);font-size:13px}
 <h2>6. カレンダー</h2>
 <p>月ごとのカレンダーで、練習に関わる予定を確認できます。日付をタップすると、その日の予定が下に表示されます。</p>
 <div class="table"><table><thead><tr><th>色の種類</th><th>内容</th></tr></thead><tbody><tr><td>割振</td><td>体育館の割当(確定済みかどうか)</td></tr><tr><td>使用不可</td><td>学校行事などで体育館が使えない日</td></tr><tr><td>チーム休み</td><td>大会などでチームが練習を休む日</td></tr><tr><td>練習休み</td><td>全チームの練習が休みの日</td></tr><tr><td>単独練習</td><td>チームが割り振りを使わずに独自で練習する日</td></tr><tr><td>時間変更</td><td>その日だけ、体育館の使用時間が変わる日</td></tr><tr><td>その他</td><td>代表者ミーティングなど</td></tr></tbody></table></div>
-<p>上の種類のボタンをタップすると、表示を絞り込めます。</p>
+<figure><img src="img/user-05-calendar.png" alt="カレンダー。①種類で絞り込み、②日付をタップ、③予定を登録" loading="lazy" width="390"><figcaption>カレンダー。①種類で絞り込み、②日付をタップ、③予定を登録</figcaption></figure>
+<p>上の種類のボタン(①)をタップすると、表示を絞り込めます。日付(②)をタップすると、その日の予定が下に出ます。</p>
 <p>練習時間は、特に決まりがなければ <strong>13:00〜17:00</strong> です。変わる日は、カレンダーの「時間変更」で確認できます。</p>
 <h3>予定を登録する</h3>
 <p>体育館が使えない日などがわかったら、登録をお願いします。</p>
-<ol><li>日付をタップし、「◯月◯日の予定を登録」を押します</li><li>種類を選び、必要な項目を入れて「登録」を押します</li></ol>
+<ol><li>日付をタップし、「◯月◯日の予定を登録」(③)を押します</li><li>種類を選び、必要な項目を入れて「登録」を押します</li></ol>
+<figure><img src="img/user-06-event.png" alt="予定の登録(単独練習の例)。①種類、②チーム、③時間" loading="lazy" width="390"><figcaption>予定の登録(単独練習の例)。①種類、②チーム、③時間</figcaption></figure>
 <p>メンバーが登録できる種類:</p>
 <div class="table"><table><thead><tr><th>種類</th><th>入れる内容</th></tr></thead><tbody><tr><td>使用不可</td><td>体育館と理由</td></tr><tr><td>チーム休み</td><td>理由(チームは自分のチームに決まります)</td></tr><tr><td>単独練習</td><td>チーム、時間(最初は 13:00〜17:00)、場所(任意)。練習日(日曜)だけ選べます</td></tr><tr><td>その他</td><td>内容</td></tr></tbody></table></div>
 <ul><li><strong>登録した予定は、全員のカレンダーに表示されます</strong>(自分だけのメモではありません)</li><li>登録者として、あなたのチーム名と名前が残ります</li><li>単独練習は、どのチームの予定でも登録できます。他のチームからも見えます</li><li>次の日曜の割振がすでに作られているときは、その日の使用不可・チーム休み・単独練習は登録できません。割当担当に連絡してください</li><li>練習休みと時間変更は、割当担当が登録します</li><li>登録した予定は「編集」から修正・削除できます。他のチームの「チーム休み」は編集できません</li></ul>

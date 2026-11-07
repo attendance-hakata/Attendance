@@ -35,6 +35,18 @@ table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.6}
 th,td{border:1px solid var(--rule);padding:8px 10px;text-align:left;vertical-align:top}
 th{background:var(--sf);white-space:nowrap}
 footer{margin-top:48px;color:var(--mute);font-size:13px}
+figure{margin:8px auto 24px;max-width:360px}
+figure img{display:block;width:100%;height:auto;border:1px solid var(--rule);border-radius:12px}
+figcaption{margin-top:8px;color:var(--mute);font-size:13px;text-align:center}
+.flow{list-style:none;padding:0;margin:8px 0 24px;counter-reset:none}
+.flow li{position:relative;display:flex;gap:12px;align-items:flex-start;background:var(--sf);border:1px solid var(--rule);padding:12px 14px;margin:0 0 22px}
+.flow li:not(:last-child)::after{content:'↓';position:absolute;left:24px;bottom:-21px;color:var(--acc);font-size:15px;line-height:20px}
+.flow-no{flex:none;width:26px;height:26px;border-radius:50%;background:var(--acc);color:#0e0f0d;font-weight:700;font-size:14px;line-height:26px;text-align:center}
+.flow b{display:block}
+.flow li span:not(.flow-no){display:block;color:var(--mute);font-size:14px;line-height:1.6}
+.types{display:flex;flex-direction:column;gap:8px;margin:8px 0 24px}
+.type-row{display:flex;gap:12px;align-items:flex-start;background:var(--sf);border:1px solid var(--rule);padding:10px 12px;font-size:14px;line-height:1.6}
+.type-tag{flex:none;min-width:84px;text-align:center;border:1px solid;padding:1px 8px;font-size:13px;font-weight:700}
 </style>
 </head>
 <body>
@@ -46,7 +58,8 @@ footer{margin-top:48px;color:var(--mute);font-size:13px}
 <p>パスは、管理者から個別に受け取ってください。このガイドには記載しません。人に見られる場所(グループのトークなど)には書かないでください。</p>
 <hr>
 <h2>1. 管理画面に入る</h2>
-<ol><li>下の「管理画面」タブをタップします</li><li><strong>チームのパス(数字4桁)</strong>を入力します</li></ol>
+<ol><li>下の「管理画面」タブをタップします</li><li><strong>チームのパス(数字4桁)</strong>を入力します(①。入力した数は●で表示されます)</li></ol>
+<figure><img src="img/alloc-01-pass.png" alt="パスの入力画面。①入力した桁数、②管理者用への切り替え(管理者だけが使います)" loading="lazy" width="390"><figcaption>パスの入力画面。①入力した桁数、②管理者用への切り替え(管理者だけが使います)</figcaption></figure>
 <ul><li>一度入力すると、その端末では次から入力なしで管理画面に入れます。期限はありません</li><li>管理者がチームのパスを変更したときは、もう一度入力が必要です</li><li>「← 戻る」でメンバー用の画面(ホーム)に戻れます</li></ul>
 <p>管理画面の下のタブ:</p>
 <div class="table"><table><thead><tr><th>タブ</th><th>使える人</th><th>できること</th></tr></thead><tbody><tr><td>割り振り</td><td>割当担当のチームだけ</td><td>次の日曜の体育館の割当</td></tr><tr><td>カレンダー</td><td>パスを持つ全員</td><td>予定の登録・修正</td></tr><tr><td>メンバー管理</td><td>パスを持つ全員(自分のチームのみ)</td><td>名簿、連絡先、ホームの設定</td></tr><tr><td>連絡先</td><td>パスを持つ全員</td><td>各チームの代表・副代表の連絡先を見る</td></tr></tbody></table></div>
@@ -76,20 +89,24 @@ footer{margin-top:48px;color:var(--mute);font-size:13px}
 <h2>4. カレンダー</h2>
 <p>メンバー用のカレンダーと同じ画面で、予定を登録・修正できます(使い方は「ユーザーガイド」の6章)。</p>
 <div class="table"><table><thead><tr><th>種類</th><th>登録できる人</th><th>入れる内容</th><th>割り振りへの影響</th></tr></thead><tbody><tr><td>使用不可</td><td>全員</td><td>体育館と理由(学校行事など)</td><td>その日、その体育館は割り振りに出ません</td></tr><tr><td>チーム休み</td><td>全員</td><td>自分のチームと理由(大会など)</td><td>その日、そのチームは「休み」になります</td></tr><tr><td>単独練習</td><td>全員</td><td>チーム、時間、場所(任意)</td><td>その日、そのチームは割り振りの対象外になります</td></tr><tr><td>練習休み</td><td>割当担当</td><td>理由(任意)</td><td>その日は全チームが休み。割り振りは作られず、出欠も回答できなくなります</td></tr><tr><td>時間変更</td><td>割当担当</td><td>練習枠と新しい時間</td><td>その日、その練習枠の時間が変わります</td></tr><tr><td>その他</td><td>全員</td><td>内容(代表者ミーティングなど)</td><td>なし</td></tr></tbody></table></div>
+<p>割り振りへの影響をまとめると、次のとおりです。</p>
+<div class="types"><div class="type-row"><span class="type-tag" style="color:#ff9a3c;border-color:#ff9a3c">使用不可</span><span>その体育館が、その日の割り振りから外れる</span></div><div class="type-row"><span class="type-tag" style="color:#6cb4ff;border-color:#6cb4ff">チーム休み</span><span>そのチームが、その日の割り振りから外れる(0人)</span></div><div class="type-row"><span class="type-tag" style="color:#b993ff;border-color:#b993ff">単独練習</span><span>そのチームが、その日の割り振りから外れる(チーム独自で練習)</span></div><div class="type-row"><span class="type-tag" style="color:#ff6b6b;border-color:#ff6b6b">練習休み</span><span>その日は全体が休み。割り振りも出欠の回答もなし</span></div><div class="type-row"><span class="type-tag" style="color:#4fd1c5;border-color:#4fd1c5">時間変更</span><span>その練習枠の、その日の時間だけが変わる</span></div><div class="type-row"><span class="type-tag" style="color:#eeefe9;border-color:#eeefe9">その他</span><span>割り振りには影響しない</span></div></div>
+<figure><img src="img/alloc-05-event.png" alt="割当担当のカレンダーでは、練習休みと時間変更も選べる(①)" loading="lazy" width="390"><figcaption>割当担当のカレンダーでは、練習休みと時間変更も選べる(①)</figcaption></figure>
 <ul><li>使用不可は、まず自分のチームのホームが表示されます。他のチームの体育館を代わりに登録することもできます</li><li>単独練習・練習休み・時間変更は、練習日(日曜)だけ登録できます</li><li>単独練習のチームは、自分のチーム以外も選べます。登録すると、そのチームのホームに「単独練習」と時間・場所が表示されます</li><li>割当担当は、割振を作ったあとの次の日曜にも、使用不可・チーム休み・単独練習を登録できます。メンバーやチーム代表はできません</li><li>練習休みと時間変更は、管理画面のカレンダーでだけ登録・修正・削除できます(割当担当のチームのみ)</li><li>練習休みは、確定済みの週には登録できません。先に割り振りの「確定を解除」をしてください</li><li>時間変更は、確定済みの週にも登録できます。メンバーのホーム、Google カレンダーの予定にも反映されます。LINE では改めて知らせてください</li></ul>
 <hr>
 <h2>5. 割り振り(割当担当)</h2>
 <p>次の日曜に、どのチームをどの体育館で練習させるかを決めます。</p>
 <h3>毎週の流れ</h3>
-<ol><li>出欠の回答が集まるのを待つ(画面右上が「回答受付中」)</li><li>回答を締め切る(スイッチを「締め切り中」にする)</li><li>体育館ごとにチームを割り振る</li><li>「最終確認へ」で内容を確認し、「この内容で決定する」</li><li>表示された文面をコピーし、LINE に投稿する</li></ol>
+<ol class="flow"><li><span class="flow-no">1</span><div><b>回答を受け付ける</b><span>メンバーが出欠を回答する。画面右上のスイッチは「回答受付中」</span></div></li><li><span class="flow-no">2</span><div><b>締め切る</b><span>割当担当がスイッチを「締め切り中」にする。メンバーは回答を変えられなくなる</span></div></li><li><span class="flow-no">3</span><div><b>割り振る</b><span>割当担当が、体育館ごとにチームを入れる</span></div></li><li><span class="flow-no">4</span><div><b>決定する</b><span>「最終確認へ」で内容を確かめ、「この内容で決定する」。メンバーのホームに体育館が出る</span></div></li><li><span class="flow-no">5</span><div><b>LINE で知らせる</b><span>表示された文面をコピーして、LINE に投稿する</span></div></li></ol>
+<figure><img src="img/alloc-02-pick.png" alt="割り振り画面。①受付と締め切りのスイッチ、②体育館を選ぶ、③チームをタップして割り振る" loading="lazy" width="390"><figcaption>割り振り画面。①受付と締め切りのスイッチ、②体育館を選ぶ、③チームをタップして割り振る</figcaption></figure>
 <h3>① 回答の受付と締め切り</h3>
-<p>右上のスイッチで切り替えます。</p>
+<p>右上のスイッチ(画像の①)で切り替えます。</p>
 <ul><li><strong>回答受付中</strong>: メンバーが出欠を回答・変更できます</li><li><strong>締め切り中</strong>: メンバーはその週の回答を変えられません。スイッチを戻せば、受付を再開できます</li><li>締め切りの時刻は決まっていません。割当担当が判断して締め切ってください</li></ul>
 <h3>② 体育館を選んで、チームを割り振る</h3>
-<ol><li>「① 今週使える体育館を選ぶ」で体育館をタップします。体育館ごとに、割り振った人数の合計が出ます</li><li>「② チームをタップして、この体育館に割り振る」で、その体育館に入れるチームをタップします</li></ol>
+<ol><li>「① 今週使える体育館を選ぶ」(画像の②)で体育館をタップします。体育館ごとに、割り振った人数の合計が出ます</li><li>「② チームをタップして、この体育館に割り振る」(画像の③)で、その体育館に入れるチームをタップします</li></ol>
 <p>チームの表示の見方:</p>
-<div class="table"><table><thead><tr><th>表示</th><th>意味</th></tr></thead><tbody><tr><td>HOME</td><td>その体育館がホームのチーム</td></tr><tr><td>この体育館に割振中</td><td>今選んでいる体育館に入っている</td></tr><tr><td>割振済み:◯◯</td><td>別の体育館に入っている(タップすると移すか確認されます)</td></tr><tr><td>未割当</td><td>まだどこにも入っていない</td></tr><tr><td>休み</td><td>カレンダーでチーム休みが登録されている(割り振れません)</td></tr><tr><td>単独練習</td><td>カレンダーで単独練習が登録されている(割り振れません)</td></tr><tr><td>6人未満</td><td>出席が6人に届いていない</td></tr></tbody></table></div>
-<ul><li>人数は「出席」と回答した人の数です</li><li><strong>6人以上</strong>が、1チームで練習できる目安です。足りないチームは、他のチームと同じ体育館にまとめてください</li><li>使用不可が登録されている体育館は、理由とともに灰色で表示され、選べません</li><li>「自動で割り振る」を押すと、ホームなどをもとにした案に組み直します。それまでの手作業の割り振りは消えます</li><li>「チーム別の集計を開く」で、週ごとのチーム別人数や未回答の人の名前を確認できます</li></ul>
+<div class="table"><table><thead><tr><th>表示</th><th>意味</th></tr></thead><tbody><tr><td>HOME</td><td>その体育館がホームのチーム</td></tr><tr><td>この体育館に割振中</td><td>今選んでいる体育館に入っている</td></tr><tr><td>割振済み:◯◯</td><td>別の体育館に入っている(タップすると移すか確認されます)</td></tr><tr><td>未割当</td><td>まだどこにも入っていない</td></tr><tr><td>休み</td><td>カレンダーでチーム休みが登録されている(割り振れません)</td></tr><tr><td>単独練習</td><td>カレンダーで単独練習が登録されている(割り振れません)</td></tr><tr><td>6人未満</td><td>参加が6人に届いていない</td></tr></tbody></table></div>
+<ul><li>人数は「参加」と回答した人の数です</li><li><strong>6人以上</strong>が、1チームで練習できる目安です。足りないチームは、他のチームと同じ体育館にまとめてください</li><li>使用不可が登録されている体育館は、理由とともに灰色で表示され、選べません</li><li>「自動で割り振る」を押すと、ホームなどをもとにした案に組み直します。それまでの手作業の割り振りは消えます</li><li>「チーム別の集計を開く」で、週ごとのチーム別人数や未回答の人の名前を確認できます</li></ul>
 <h3>③ 臨時の体育館を使う</h3>
 <p>いつもの体育館が使えず、別の体育館を借りるときは「＋ その他の体育館」を押します。</p>
 <ol><li>体育館と使用時間を選んで「追加する」(時間の初期値は 13:00〜17:00)</li><li>追加した体育館に、ふつうどおりチームを割り振ります</li></ol>
@@ -97,12 +114,14 @@ footer{margin-top:48px;color:var(--mute);font-size:13px}
 <h3>④ 最終確認と決定</h3>
 <p>「最終確認へ →」を押すと、体育館ごとの割当が一覧で出ます。次のような注意が出たら確認してください。</p>
 <ul><li>まだ割り振られていないチームがある</li><li>6人未満の体育館がある</li><li>ホームのチームが、自分のホームの体育館にいない</li></ul>
-<p>問題なければ「この内容で決定する」を押します。直すときは「修正」で戻ります。</p>
+<p>問題なければ「この内容で決定する」(①)を押します。直すときは「修正」で戻ります。</p>
+<figure><img src="img/alloc-03-confirm.png" alt="最終確認の一番下。①この内容で決定する" loading="lazy" width="390"><figcaption>最終確認の一番下。①この内容で決定する</figcaption></figure>
 <p>決定すると:</p>
 <ul><li>その週は<strong>確定済み</strong>になり、メンバーのホームに体育館と時間が表示されます</li><li>Google カレンダーの「Attendance 練習」に予定が入ります<ul><li>反映に失敗したときは「カレンダーへの反映に失敗しました」と出ます。割当の決定そのものは保存されています。管理者に連絡してください</li></ul></li></ul>
 <h3>⑤ LINE で知らせる</h3>
 <p>決定のあとに、LINE 用の文面が自動で作られます。体育館ごとのチームと人数に加えて、使用不可の体育館、休みのチーム、単独練習のチームも載ります。</p>
-<ol><li>内容を確認します</li><li>「文面をコピー」を押して、LINE に貼り付けて投稿します</li></ol>
+<ol><li>内容を確認します</li><li>「文面をコピー」(①)を押して、LINE に貼り付けて投稿します</li></ol>
+<figure><img src="img/alloc-04-line.png" alt="LINE 用の文面。①文面をコピー" loading="lazy" width="390"><figcaption>LINE 用の文面。①文面をコピー</figcaption></figure>
 <p>アプリから LINE へ自動では送られません。投稿は手作業です。</p>
 <h3>決定したあとで変えたいとき</h3>
 <ol><li>右上の「確定を解除」を押します</li><li>割当は消えずに「調整中」に戻るので、直してからもう一度決定します</li></ol>
